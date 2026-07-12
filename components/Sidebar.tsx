@@ -4,9 +4,10 @@ interface SidebarProps {
   activeTab: string;
   onTabClick: (tab: string) => void;
   onExecuteClick: () => void;
+  onLogout?: () => void;
 }
 
-export default function Sidebar({ activeTab, onTabClick, onExecuteClick }: SidebarProps) {
+export default function Sidebar({ activeTab, onTabClick, onExecuteClick, onLogout }: SidebarProps) {
   return (
     <aside className="hidden xl:flex bg-surface-container-low/95 backdrop-blur-lg docked left-0 h-full w-80 border-r border-outline-variant/10 shadow-[10px_0_30px_rgba(0,0,0,0.3)] flex-col py-8 px-4 gap-stack-md z-40">
       {/* Header section */}
@@ -117,26 +118,19 @@ export default function Sidebar({ activeTab, onTabClick, onExecuteClick }: Sideb
       </button>
 
       {/* Footer section */}
-      <div className="flex flex-col gap-2 border-t border-outline-variant/20 pt-4 px-4">
-        <a
-          href="#"
-          className="flex items-center gap-4 py-2 text-on-surface-variant hover:text-on-surface transition-all"
-        >
+      <footer className="border-t border-outline-variant/20 pt-4 px-4 flex flex-col gap-2">
+        <a href="#" className="flex items-center gap-4 py-2 text-on-surface-variant hover:text-on-surface transition-colors font-mono-jb text-xs uppercase tracking-widest">
           <span className="material-symbols-outlined">help</span>
-          <span className="font-label-sm text-label-sm uppercase tracking-widest">
-            Support
-          </span>
+          Support
         </a>
-        <a
-          href="#"
-          className="flex items-center gap-4 py-2 text-on-surface-variant hover:text-on-surface transition-all"
+        <button 
+          onClick={onLogout}
+          className="flex items-center gap-4 py-2 text-on-surface-variant hover:text-on-surface transition-colors font-mono-jb text-xs uppercase tracking-widest text-left w-full"
         >
           <span className="material-symbols-outlined">logout</span>
-          <span className="font-label-sm text-label-sm uppercase tracking-widest">
-            Log Out
-          </span>
-        </a>
-      </div>
+          Log Out
+        </button>
+      </footer>
     </aside>
   );
 }

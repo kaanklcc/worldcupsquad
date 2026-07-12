@@ -8,6 +8,7 @@ import ChatPanel from '@/components/ChatPanel';
 import PlayerSelectionModal from '@/components/PlayerSelectionModal';
 import Sidebar from '@/components/Sidebar';
 import ExecuteSyncModal from '@/components/ExecuteSyncModal';
+import AuthOverlay from '@/components/AuthOverlay';
 
 // ─── Initial Squad (4-3-3) ─────────────────────────────────────────────────────
 function createInitialSquad(): SquadSlot[] {
@@ -58,6 +59,10 @@ export default function HomePage() {
   const [isPremiumUnlocked, setIsPremiumUnlocked] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SquadSlot | null>(null);
@@ -68,13 +73,41 @@ export default function HomePage() {
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  // ─── Load players ───────────────────────────────────────────────────────
+  // ─── Load players & Verify Token ───────────────────────────────────────────
   useEffect(() => {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    
+    // 1. Fetch Players
     fetch(`${API_URL}/api/players`)
       .then((res) => res.json())
       .then((data: Player[]) => setPlayers(data))
       .catch(console.error);
+
+    // 2. Validate session token
+    const token = localStorage.getItem('token');
+    const username = localStorage.getItem('username');
+    if (token && username) {
+      fetch(`${API_URL}/api/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => {
+          if (res.ok) {
+            setCurrentUser(username);
+          } else {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+          }
+        })
+        .catch(() => {
+          // If server is offline but we have stored credentials, let them in local mode
+          setCurrentUser(username);
+        })
+        .finally(() => {
+          setAuthLoading(false);
+        });
+    } else {
+      setAuthLoading(false);
+    }
   }, []);
 
   // ─── Derived ────────────────────────────────────────────────────────────
@@ -351,6 +384,19 @@ export default function HomePage() {
     setIsSyncing(true);
   }, []);
 
+  // Authentication Callbacks
+  const handleLoginSuccess = useCallback((username: string, token: string) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('username', username);
+    setCurrentUser(username);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    setCurrentUser(null);
+  }, []);
+
   // Approve MCP action
   const handleApproveAction = useCallback(
     (action: SuggestedAction) => {
@@ -398,6 +444,19 @@ export default function HomePage() {
   );
 
   // ─── Render ─────────────────────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-slate-300">
+        <div className="h-10 w-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <span className="mt-4 font-mono-jb text-xs uppercase tracking-widest text-emerald-400">Verifying Manager Credentials...</span>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <AuthOverlay onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="flex h-screen flex-col bg-background text-on-background overflow-hidden">
       <Header 
@@ -414,6 +473,7 @@ export default function HomePage() {
           activeTab={activeTab} 
           onTabClick={handleTabClick} 
           onExecuteClick={handleExecuteChanges}
+          onLogout={handleLogout}
         />
 
         {/* Middle Column (Pitch + Chat + Footer nested) */}
