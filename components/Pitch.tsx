@@ -314,11 +314,11 @@ export default function Pitch({
       return (
         <div className="flex flex-col gap-2 z-10 w-full">
           {/* Attacking Midfielders (3) */}
-          <div className="flex justify-center gap-12 md:gap-20">
+          <div className="flex justify-center gap-8 md:gap-14">
             {mfSlots.slice(2, 5).map(s => renderSlot(s))}
           </div>
           {/* Defensive Midfielders (2) */}
-          <div className="flex justify-center gap-16 md:gap-24">
+          <div className="flex justify-center gap-10 md:gap-16">
             {mfSlots.slice(0, 2).map(s => renderSlot(s))}
           </div>
         </div>
@@ -367,7 +367,7 @@ export default function Pitch({
     }
     if (dfCount === 3) {
       return (
-        <div className="flex justify-center gap-12 md:gap-20 z-10 w-full">
+        <div className="flex justify-center gap-8 md:gap-14 z-10 w-full">
           {dfSlots.map((s, i) => (
             <div key={`df-${i}`} className={i === 1 ? 'mt-3' : ''}>
               {renderSlot(s)}
@@ -377,7 +377,7 @@ export default function Pitch({
       );
     }
     return (
-      <div className="flex justify-center gap-6 md:gap-10 z-10 w-full">
+      <div className="flex justify-center gap-4 md:gap-8 z-10 w-full">
         {dfSlots.map((s, i) => (
           <div key={`df-${i}`} className={i === 1 || i === 2 ? 'mt-3' : ''}>
             {renderSlot(s)}
@@ -387,7 +387,7 @@ export default function Pitch({
     );
   };
 
-  const activePitchWidthClass = 'max-w-[480px]';
+  const activePitchWidthClass = 'max-w-[530px]';
 
   return (
     <div 
@@ -422,7 +422,7 @@ export default function Pitch({
 
         {/* Formation rows */}
         {/* FW row */}
-        <div className="flex justify-center gap-16 md:gap-24 z-10">
+        <div className="flex justify-center gap-10 md:gap-16 z-10">
           {fwSlots.map(s => renderSlot(s))}
         </div>
 
