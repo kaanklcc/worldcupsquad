@@ -64,12 +64,12 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.detail || 'Giriş yapılamadı.');
+        throw new Error(data.detail || 'Giriş bilgileri hatalı veya kayıt yok.');
       }
       
       onLoginSuccess(data.username, data.token);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Sunucu bağlantı hatası.');
+      setErrorMsg(err.message || 'Sunucuya bağlanılamadı.');
     } finally {
       setLoading(false);
     }
@@ -102,7 +102,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         throw new Error(data.detail || 'Kayıt başarısız.');
       }
       
-      setSuccessMsg('Kayıt başarılı! Şimdi giriş yapabilirsiniz.');
+      setSuccessMsg('Menajer kaydı başarılı! Şimdi şifrenizle giriş yapabilirsiniz.');
       setMode('login');
       setPassword('');
       setSecurityAnswer('');
@@ -168,7 +168,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         throw new Error(data.detail || 'Şifre sıfırlama başarısız.');
       }
       
-      setSuccessMsg('Şifreniz başarıyla sıfırlandı! Şimdi yeni şifrenizle giriş yapın.');
+      setSuccessMsg('Şifreniz başarıyla sıfırlandı! Yeni şifrenizle giriş yapabilirsiniz.');
       setMode('login');
       setUsername(usernameOrEmail);
       setPassword('');
@@ -182,67 +182,81 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-lg">
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl overflow-hidden flex flex-col gap-6 z-10 text-slate-300">
+    /* Full-screen pitch-bg background */
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pitch-bg rounded-none border-none overflow-hidden select-none">
+      {/* Crisp White pitch field lines layer */}
+      <div className="absolute inset-0 pitch-lines opacity-25 pointer-events-none scale-105"></div>
+      
+      {/* Dark semi-transparent vignette/backdrop overlay */}
+      <div className="absolute inset-0 bg-black/55 backdrop-blur-[3px] z-0"></div>
+
+      {/* Thematic World Cup Auth Card */}
+      <div className="relative z-10 w-full max-w-md bg-slate-950/90 border border-slate-800 rounded-2xl p-6 shadow-[0_15px_50px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col gap-5 text-slate-300 backdrop-blur-md">
         
-        {/* Header Logo */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-14 w-14 rounded-full border-2 border-emerald-500 bg-emerald-500/10 flex items-center justify-center drop-shadow-[0_0_10px_rgba(16,185,129,0.4)]">
-            <span className="material-symbols-outlined text-emerald-500 text-3xl">sports_soccer</span>
+        {/* World Cup Trophy Header Logo */}
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="h-16 w-16 rounded-full border-2 border-amber-400 bg-amber-400/10 flex items-center justify-center drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]">
+            <span className="material-symbols-outlined text-amber-400 text-3xl animate-pulse">trophy</span>
           </div>
-          <h2 className="font-display-lg text-2xl uppercase tracking-wider text-slate-100 mt-2">
-            Auto-Gaffer
+          <h2 className="font-display-lg text-2xl uppercase tracking-wider text-slate-100 mt-2 font-bold flex items-center gap-2">
+            <span>FIFA WORLD CUP 2026</span>
           </h2>
-          <p className="font-mono-jb text-[10px] text-emerald-400 uppercase tracking-widest">
-            Manager Control Center
+          <p className="font-mono-jb text-[10px] text-emerald-400 uppercase tracking-widest font-bold">
+            ⚽ DUGOUT ACCESS CONTROL
           </p>
         </div>
 
-        {/* Notifications */}
+        {/* Notifications and validation hints */}
         {errorMsg && (
           <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg flex items-center gap-2 animate-shake">
             <span className="material-symbols-outlined text-sm">error</span>
-            <span>{errorMsg}</span>
+            <span className="font-body text-[11px] leading-tight">{errorMsg}</span>
           </div>
         )}
         {successMsg && (
           <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs p-3 rounded-lg flex items-center gap-2">
             <span className="material-symbols-outlined text-sm">check_circle</span>
-            <span>{successMsg}</span>
+            <span className="font-body text-[11px] leading-tight">{successMsg}</span>
           </div>
         )}
 
         {/* ─── Mode: LOGIN ─────────────────────────────────────────────────── */}
         {mode === 'login' && (
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Kullanıcı Adı veya E-posta</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Manager adı veya email"
-                className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
-              />
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Menajer Kimliği (Kullanıcı Adı veya E-posta)</label>
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">person</span>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Manager adı veya email"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
+                />
+              </div>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Şifre</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••"
-                className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
-              />
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Giriş Şifresi</label>
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">lock</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
+                />
+              </div>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="emerald-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2"
+              className="emerald-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'GİRİŞ YAP'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'DUGOUT GİRİŞİ YAP'}
             </button>
 
             <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono-jb mt-2">
@@ -250,7 +264,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
                 Şifremi Unuttum?
               </button>
               <button type="button" onClick={() => { setMode('register'); resetMessages(); }} className="hover:text-emerald-400 transition-colors font-bold">
-                Yeni Hesap Oluştur
+                Yeni Menajer Alımı (Kayıt)
               </button>
             </div>
           </form>
@@ -258,9 +272,9 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
 
         {/* ─── Mode: REGISTER ──────────────────────────────────────────────── */}
         {mode === 'register' && (
-          <form onSubmit={handleRegister} className="flex flex-col gap-3.5 max-h-[450px] overflow-y-auto pr-1 scrollbar-thin">
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Kullanıcı Adı</label>
+          <form onSubmit={handleRegister} className="flex flex-col gap-3.5 max-h-[400px] overflow-y-auto pr-1 scrollbar-thin">
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Menajer Adı</label>
               <input
                 type="text"
                 value={username}
@@ -270,8 +284,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">E-posta</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Menajer E-postası</label>
               <input
                 type="email"
                 value={email}
@@ -281,8 +295,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Şifre</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Taktik Şifre</label>
               <input
                 type="password"
                 value={password}
@@ -295,8 +309,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               </p>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Güvenlik Sorusu (Şifre Kurtarma için)</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Güvenlik Sorusu (Kurtarma için)</label>
               <select
                 value={securityQuestion}
                 onChange={(e) => setSecurityQuestion(e.target.value)}
@@ -308,8 +322,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               </select>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Güvenlik Sorusu Cevabı</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Güvenlik Sorusu Cevabı</label>
               <input
                 type="text"
                 value={securityAnswer}
@@ -322,13 +336,13 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
             <button
               type="submit"
               disabled={loading}
-              className="emerald-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2"
+              className="emerald-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'KAYIT OL'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'YENİ MENAJER SÖZLEŞMESİ İMZALA'}
             </button>
 
             <div className="text-center text-[10px] text-slate-400 font-mono-jb mt-1">
-              Zaten hesabınız var mı?{' '}
+              Zaten dugout kaydınız var mı?{' '}
               <button type="button" onClick={() => { setMode('login'); resetMessages(); }} className="text-emerald-400 font-bold hover:underline transition-all">
                 Giriş Yap
               </button>
@@ -339,8 +353,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         {/* ─── Mode: FORGOT STEP 1 ─────────────────────────────────────────── */}
         {mode === 'forgot_step1' && (
           <form onSubmit={handleGetForgotPasswordQuestion} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Kullanıcı Adı veya E-posta</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Menajer Kimliği (Kullanıcı Adı veya E-posta)</label>
               <input
                 type="text"
                 value={usernameOrEmail}
@@ -353,9 +367,9 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
             <button
               type="submit"
               disabled={loading}
-              className="gold-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2"
+              className="gold-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'GÜVENLİK SORUSUNU GETİR'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'GÜVENLİK SORUSUNU DOĞRULA'}
             </button>
 
             <button type="button" onClick={() => { setMode('login'); resetMessages(); }} className="text-center text-[10px] text-slate-400 hover:text-emerald-400 transition-colors font-mono-jb mt-2">
@@ -372,8 +386,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               <div className="text-sm font-bold text-slate-200">{fetchedQuestion}</div>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Güvenlik Sorusu Cevabı</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Güvenlik Sorusu Cevabı</label>
               <input
                 type="text"
                 value={resetAnswer}
@@ -383,8 +397,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="font-mono-jb text-[10px] text-slate-400 uppercase">Yeni Şifre</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Yeni Taktik Şifre</label>
               <input
                 type="password"
                 value={newPassword}
@@ -397,9 +411,9 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
             <button
               type="submit"
               disabled={loading}
-              className="gold-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2"
+              className="gold-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'ŞİFREYİ SIFIRLA'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'YENİ ŞİFREYİ AKTİFLEŞTİR'}
             </button>
 
             <button type="button" onClick={() => { setMode('login'); resetMessages(); }} className="text-center text-[10px] text-slate-400 hover:text-emerald-400 transition-colors font-mono-jb mt-2">
@@ -407,6 +421,11 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
             </button>
           </form>
         )}
+
+        {/* Thematic Footer badge inside card */}
+        <div className="border-t border-slate-800 pt-3 text-center text-[9px] text-slate-500 font-mono-jb uppercase tracking-wider">
+          🏆 Official 2026 World Cup™ Dugout Interface
+        </div>
 
       </div>
     </div>
