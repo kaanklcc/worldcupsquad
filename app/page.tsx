@@ -70,7 +70,8 @@ export default function HomePage() {
 
   // ─── Load players ───────────────────────────────────────────────────────
   useEffect(() => {
-    fetch('/api/players')
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+    fetch(`${API_URL}/api/players`)
       .then((res) => res.json())
       .then((data: Player[]) => setPlayers(data))
       .catch(console.error);
@@ -198,7 +199,8 @@ export default function HomePage() {
   const handleCCTP = useCallback(async () => {
     setCctpLoading(true);
     try {
-      const res = await fetch('/api/cctp', {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+      const res = await fetch(`${API_URL}/api/cctp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -245,7 +247,8 @@ export default function HomePage() {
       }
 
       try {
-        const res = await fetch('/api/agent', {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+        const res = await fetch(`${API_URL}/api/agent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

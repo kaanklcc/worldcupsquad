@@ -1,0 +1,1 @@
+"""Auto-Gaffer MCP Integration"""

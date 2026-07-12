@@ -1,41 +1,142 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Node modules
+node_modules/
+jspm_packages/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Next.js build output
+.next/
+out/
+build/
+dist/
 
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
-*.pem
+Thumbs.db
 
-# debug
+# Testing
+coverage/
+*.lcov
+.nyc_output/
+.coverage
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# env files (can opt-in for committing if needed)
-.env*
+# Production
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
 
-# vercel
-.vercel
+# Environment variables
+.env
+.env.*.local
 
-# typescript
+# Misc
+.DS_Store
+*.pem
+*.key
+*.crt
+*.cer
+
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Vercel
+.vercel/
+.vercel_backup/
+
+# Turbopack
+.turbo/
+
+# Editor directories
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.parcel-cache/
+.vite/
+
+# Build artifacts
+*.tgz
+*.tar.gz
+
+# Misc
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.patch
+*.diff
+
+# AI/ML models and data
+*.pkl
+*.model
+*.h5
+*.pb
+*.onnx
+*.pt
+*.pth
+
+# Documentation
+docs/_build/
+site/
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Secrets
+secrets/
+*.secret
+*.credentials
+
+*.vsidx 
+*.db-shm 
+*db-wal
