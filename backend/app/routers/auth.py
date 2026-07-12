@@ -81,6 +81,24 @@ def decode_token(token: str) -> dict:
             detail="Invalid authentication token."
         )
 
+import re
+
+def validate_password_strength(password: str) -> bool:
+    """Validate that password contains at least 1 uppercase, 1 lowercase, 1 digit, and is min 6 chars."""
+    if len(password) < 6:
+        return False
+    if not re.search(r"[A-Z]", password):
+        return False
+    if not re.search(r"[a-z]", password):
+        return False
+    if not re.search(r"[0-9]", password):
+        return False
+    return True
+
+def validate_email_format(email: str) -> bool:
+    """Validate basic email pattern."""
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
+
 # ─── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/register")
@@ -88,22 +106,40 @@ async def register(user: UserRegister):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Check if username already exists
-    cursor.execute("SELECT id FROM users WHERE username = ?", (user.username,))
+    # Trim and normalize inputs
+    username_norm = user.username.strip()
+    email_norm = user.email.strip().lower()
+    
+    if not validate_email_format(email_norm):
+        conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Geçersiz e-posta formatı. Lütfen doğru bir e-posta adresi girin (örn: manager@example.com)."
+        )
+        
+    if not validate_password_strength(user.password):
+        conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Şifre gücü yetersiz! Şifreniz en az 6 karakter olmalı; en az bir büyük harf (A-Z), bir küçük harf (a-z) ve bir rakam (0-9) içermelidir."
+        )
+    
+    # Check if username already exists (case-insensitive check)
+    cursor.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", (username_norm,))
     if cursor.fetchone():
         conn.close()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken. Please choose another one."
+            detail="Bu kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı seçin."
         )
         
     # Check if email already exists
-    cursor.execute("SELECT id FROM users WHERE email = ?", (user.email,))
+    cursor.execute("SELECT id FROM users WHERE LOWER(email) = LOWER(?)", (email_norm,))
     if cursor.fetchone():
         conn.close()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered. Try logging in."
+            detail="Bu e-posta adresi zaten kayıtlı. Lütfen giriş yapmayı deneyin."
         )
         
     # Hash password and security answer
@@ -116,12 +152,12 @@ async def register(user: UserRegister):
         INSERT INTO users (username, email, password_hash, security_question, security_answer_hash)
         VALUES (?, ?, ?, ?, ?)
         """,
-        (user.username, user.email, pw_hash, user.security_question, ans_hash)
+        (username_norm, email_norm, pw_hash, user.security_question, ans_hash)
     )
     conn.commit()
     conn.close()
     
-    return {"success": True, "message": "Manager registration completed successfully!"}
+    return {"success": True, "message": "Manager kaydı başarıyla tamamlandı!"}
 
 @router.post("/login")
 async def login(user: UserLogin):

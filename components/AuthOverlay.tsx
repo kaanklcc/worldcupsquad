@@ -290,6 +290,9 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
                 placeholder="Min 6 karakter"
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
+              <p className="text-[9px] text-slate-500 font-mono-jb mt-0.5 leading-normal">
+                * Şifreniz en az 6 karakter, 1 büyük harf (A-Z), 1 küçük harf (a-z) ve 1 rakam (0-9) içermelidir.
+              </p>
             </div>
 
             <div className="flex flex-col gap-1">
