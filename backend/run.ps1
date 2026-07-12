@@ -1,16 +1,15 @@
-@echo off
-echo Starting Auto-Gaffer Backend...
-echo.
+Write-Host "Starting Auto-Gaffer Backend..." -ForegroundColor Yellow
+Write-Host ""
 
-REM Check if uvicorn is installed
-python -c "import uvicorn" 2>nul
-if errorlevel 1 (
-    echo Installing dependencies...
-    pip install -r requirements.txt
-)
+if (-not (Test-Path "venv")) {
+    Write-Host "Creating Virtual Environment (venv)..." -ForegroundColor Cyan
+    python -m venv venv
+}
 
-REM Start the server
-echo Starting server on http://localhost:8000
-echo API docs: http://localhost:8000/docs
-echo.
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+Write-Host "Installing/Updating dependencies in venv..." -ForegroundColor Cyan
+.\venv\Scripts\pip install -r requirements.txt
+
+Write-Host "Starting FastAPI Server on http://localhost:8000" -ForegroundColor Green
+Write-Host "API Docs: http://localhost:8000/docs" -ForegroundColor Green
+Write-Host ""
+.\venv\Scripts\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
