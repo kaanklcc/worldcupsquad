@@ -1,0 +1,450 @@
+[
+  {
+    "id": "arg_gk_martinez",
+    "name": "Emiliano Martínez",
+    "position": "GK",
+    "team": "Argentina",
+    "price": 8.5,
+    "isAvailable": true,
+    "points": 88,
+    "flag": "🇦🇷",
+    "number": 23,
+    "premium_stats": {
+      "xg_per_game": 0.01,
+      "injury_risk": "Low",
+      "scout_note": "Heroic shot-stopper. Key player for Argentina's semi-final run, keeping critical clean sheets and dominant in penalties."
+    }
+  },
+  {
+    "id": "fra_gk_maignan",
+    "name": "Mike Maignan",
+    "position": "GK",
+    "team": "France",
+    "price": 8.0,
+    "isAvailable": true,
+    "points": 85,
+    "flag": "🇫🇷",
+    "number": 16,
+    "premium_stats": {
+      "xg_per_game": 0.01,
+      "injury_risk": "Low",
+      "scout_note": "Outstanding reflex saves in the quarter-final against Portugal. France's reliable wall."
+    }
+  },
+  {
+    "id": "eng_gk_pickford",
+    "name": "Jordan Pickford",
+    "position": "GK",
+    "team": "England",
+    "price": 7.0,
+    "isAvailable": true,
+    "points": 82,
+    "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "number": 1,
+    "premium_stats": {
+      "xg_per_game": 0.01,
+      "injury_risk": "Low",
+      "scout_note": "Very vocal keeper with solid distribution. Has led England's defensive organization safely."
+    }
+  },
+  {
+    "id": "esp_gk_simon",
+    "name": "Unai Simón",
+    "position": "GK",
+    "team": "Spain",
+    "price": 7.5,
+    "isAvailable": true,
+    "points": 87,
+    "flag": "🇪🇸",
+    "number": 23,
+    "premium_stats": {
+      "xg_per_game": 0.01,
+      "injury_risk": "Low",
+      "scout_note": "Broke the clean-sheet record (519 min) earlier in the tournament. Highly consistent."
+    }
+  },
+  {
+    "id": "arg_df_romero",
+    "name": "Cristian Romero",
+    "position": "DF",
+    "team": "Argentina",
+    "price": 7.5,
+    "isAvailable": true,
+    "points": 84,
+    "flag": "🇦🇷",
+    "number": 13,
+    "premium_stats": {
+      "xg_per_game": 0.05,
+      "injury_risk": "Medium",
+      "scout_note": "Aggressive and solid center-back. Leading Argentina's defensive line with high interception rates."
+    }
+  },
+  {
+    "id": "arg_df_otamendi",
+    "name": "Nicolás Otamendi",
+    "position": "DF",
+    "team": "Argentina",
+    "price": 6.0,
+    "isAvailable": true,
+    "points": 78,
+    "flag": "🇦🇷",
+    "number": 19,
+    "premium_stats": {
+      "xg_per_game": 0.03,
+      "injury_risk": "Low",
+      "scout_note": "Veteran leader who provides strong physical presence in the air. High tackle success rate."
+    }
+  },
+  {
+    "id": "fra_df_saliba",
+    "name": "William Saliba",
+    "position": "DF",
+    "team": "France",
+    "price": 8.0,
+    "isAvailable": true,
+    "points": 88,
+    "flag": "🇫🇷",
+    "number": 4,
+    "premium_stats": {
+      "xg_per_game": 0.02,
+      "injury_risk": "Low",
+      "scout_note": "Classy and composed ball-playing center-back. Has made zero errors leading to shots in this tournament."
+    }
+  },
+  {
+    "id": "fra_df_hernandez",
+    "name": "Theo Hernández",
+    "position": "DF",
+    "team": "France",
+    "price": 8.0,
+    "isAvailable": true,
+    "points": 83,
+    "flag": "🇫🇷",
+    "number": 22,
+    "premium_stats": {
+      "xg_per_game": 0.12,
+      "injury_risk": "Medium",
+      "scout_note": "Attacking left-back who provides immense width and crosses. Crucial link for Mbappé's overlaps."
+    }
+  },
+  {
+    "id": "eng_df_stones",
+    "name": "John Stones",
+    "position": "DF",
+    "team": "England",
+    "price": 7.5,
+    "isAvailable": true,
+    "points": 83,
+    "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "number": 5,
+    "premium_stats": {
+      "xg_per_game": 0.06,
+      "injury_risk": "Medium",
+      "scout_note": "Composed build-up defender. Calm under pressure and highly accurate passing stats."
+    }
+  },
+  {
+    "id": "eng_df_walker",
+    "name": "Kyle Walker",
+    "position": "DF",
+    "team": "England",
+    "price": 7.2,
+    "isAvailable": true,
+    "points": 81,
+    "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "number": 2,
+    "premium_stats": {
+      "xg_per_game": 0.02,
+      "injury_risk": "Low",
+      "scout_note": "Incredible recovery speed. Crucial for countering speedy left wingers like Mbappé."
+    }
+  },
+  {
+    "id": "esp_df_laporte",
+    "name": "Aymeric Laporte",
+    "position": "DF",
+    "team": "Spain",
+    "price": 7.5,
+    "isAvailable": true,
+    "points": 84,
+    "flag": "🇪🇸",
+    "number": 14,
+    "premium_stats": {
+      "xg_per_game": 0.04,
+      "injury_risk": "Low",
+      "scout_note": "Spain's key ball-playing central defender. Composed in playing out from the back."
+    }
+  },
+  {
+    "id": "esp_df_carvajal",
+    "name": "Dani Carvajal",
+    "position": "DF",
+    "team": "Spain",
+    "price": 7.0,
+    "isAvailable": true,
+    "points": 80,
+    "flag": "🇪🇸",
+    "number": 2,
+    "premium_stats": {
+      "xg_per_game": 0.05,
+      "injury_risk": "Low",
+      "scout_note": "Tenacious right-back who brings immense grit and tactical discipline to Spain's defensive line."
+    }
+  },
+  {
+    "id": "arg_mf_macallister",
+    "name": "Alexis Mac Allister",
+    "position": "MF",
+    "team": "Argentina",
+    "price": 9.5,
+    "isAvailable": true,
+    "points": 82,
+    "flag": "🇦🇷",
+    "number": 20,
+    "premium_stats": {
+      "xg_per_game": 0.15,
+      "injury_risk": "Low",
+      "scout_note": "The motor of Argentina's midfield. High passing accuracy under pressure and links defense to attack."
+    }
+  },
+  {
+    "id": "arg_mf_fernandez",
+    "name": "Enzo Fernández",
+    "position": "MF",
+    "team": "Argentina",
+    "price": 8.5,
+    "isAvailable": true,
+    "points": 80,
+    "flag": "🇦🇷",
+    "number": 24,
+    "premium_stats": {
+      "xg_per_game": 0.18,
+      "injury_risk": "Low",
+      "scout_note": "Controls the tempo of Argentina's possession play. Excellent vision and long-range shooting threat."
+    }
+  },
+  {
+    "id": "fra_mf_tchouameni",
+    "name": "Aurélien Tchouaméni",
+    "position": "MF",
+    "team": "France",
+    "price": 8.5,
+    "isAvailable": true,
+    "points": 81,
+    "flag": "🇫🇷",
+    "number": 8,
+    "premium_stats": {
+      "xg_per_game": 0.10,
+      "injury_risk": "Low",
+      "scout_note": "Holding midfielder providing vital cover for the backline. Dominant in aerial and ground duels."
+    }
+  },
+  {
+    "id": "fra_mf_griezmann",
+    "name": "Antoine Griezmann",
+    "position": "MF",
+    "team": "France",
+    "price": 11.0,
+    "isAvailable": true,
+    "points": 88,
+    "flag": "🇫🇷",
+    "number": 7,
+    "premium_stats": {
+      "xg_per_game": 0.28,
+      "injury_risk": "Low",
+      "scout_note": "Tactical genius. Orchestrates France's attack, drops deep to defend, and leads the assist charts."
+    }
+  },
+  {
+    "id": "eng_mf_bellingham",
+    "name": "Jude Bellingham",
+    "position": "MF",
+    "team": "England",
+    "price": 13.5,
+    "isAvailable": true,
+    "points": 92,
+    "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "number": 10,
+    "premium_stats": {
+      "xg_per_game": 0.35,
+      "injury_risk": "Medium",
+      "scout_note": "England's star. Scored two goals in the quarter-final against Norway. Instrumental in transition phases."
+    }
+  },
+  {
+    "id": "eng_mf_rice",
+    "name": "Declan Rice",
+    "position": "MF",
+    "team": "England",
+    "price": 10.0,
+    "isAvailable": true,
+    "points": 85,
+    "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "number": 4,
+    "premium_stats": {
+      "xg_per_game": 0.08,
+      "injury_risk": "Low",
+      "scout_note": "Defensive anchor. Exceptional interception count and stamina. Covers massive ground."
+    }
+  },
+  {
+    "id": "esp_mf_rodri",
+    "name": "Rodri",
+    "position": "MF",
+    "team": "Spain",
+    "price": 12.5,
+    "isAvailable": true,
+    "points": 93,
+    "flag": "🇪🇸",
+    "number": 16,
+    "premium_stats": {
+      "xg_per_game": 0.12,
+      "injury_risk": "Low",
+      "scout_note": "Captain and tactical brain. The most complete midfielder in the tournament, controlling possession and dictate play."
+    }
+  },
+  {
+    "id": "esp_mf_olmo",
+    "name": "Dani Olmo",
+    "position": "MF",
+    "team": "Spain",
+    "price": 9.5,
+    "isAvailable": true,
+    "points": 86,
+    "flag": "🇪🇸",
+    "number": 10,
+    "premium_stats": {
+      "xg_per_game": 0.30,
+      "injury_risk": "Medium",
+      "scout_note": "Scored the winning goal in the quarter-final against Belgium. Very creative with high-impact key passes."
+    }
+  },
+  {
+    "id": "arg_fw_messi",
+    "name": "Lionel Messi",
+    "position": "FW",
+    "team": "Argentina",
+    "price": 16.5,
+    "isAvailable": true,
+    "points": 95,
+    "flag": "🇦🇷",
+    "number": 10,
+    "premium_stats": {
+      "xg_per_game": 0.65,
+      "injury_risk": "Medium",
+      "scout_note": "Leading the Golden Boot race with 8 goals. Carrying Argentina with masterclass playmaking and lethal finishes."
+    }
+  },
+  {
+    "id": "arg_fw_alvarez",
+    "name": "Julián Álvarez",
+    "position": "FW",
+    "team": "Argentina",
+    "price": 9.5,
+    "isAvailable": true,
+    "points": 84,
+    "flag": "🇦🇷",
+    "number": 9,
+    "premium_stats": {
+      "xg_per_game": 0.38,
+      "injury_risk": "Low",
+      "scout_note": "Relentless pressing striker. High work-rate that creates spaces for Messi. Has scored 3 goals."
+    }
+  },
+  {
+    "id": "fra_fw_mbappe",
+    "name": "Kylian Mbappé",
+    "position": "FW",
+    "team": "France",
+    "price": 17.0,
+    "isAvailable": true,
+    "points": 94,
+    "flag": "🇫🇷",
+    "number": 10,
+    "premium_stats": {
+      "xg_per_game": 0.72,
+      "injury_risk": "Low",
+      "scout_note": "Joint top scorer with 8 goals. Lethal on the counter-attack with electric pace. France's talisman."
+    }
+  },
+  {
+    "id": "fra_fw_dembele",
+    "name": "Ousmane Dembélé",
+    "position": "FW",
+    "team": "France",
+    "price": 9.0,
+    "isAvailable": true,
+    "points": 84,
+    "flag": "🇫🇷",
+    "number": 11,
+    "premium_stats": {
+      "xg_per_game": 0.22,
+      "injury_risk": "Medium",
+      "scout_note": "Unpredictable dribbler on the right. Creates high-quality chances but lacks finishing consistency."
+    }
+  },
+  {
+    "id": "esp_fw_williams",
+    "name": "Nico Williams",
+    "position": "FW",
+    "team": "Spain",
+    "price": 9.0,
+    "isAvailable": false,
+    "points": 82,
+    "flag": "🇪🇸",
+    "number": 17,
+    "premium_stats": {
+      "xg_per_game": 0.30,
+      "injury_risk": "High",
+      "scout_note": "Out with an adductor injury sustained in the Round of 16. Spanish attack misses his directness on the left."
+    }
+  },
+  {
+    "id": "esp_fw_yamal",
+    "name": "Lamine Yamal",
+    "position": "FW",
+    "team": "Spain",
+    "price": 12.0,
+    "isAvailable": true,
+    "points": 90,
+    "flag": "🇪🇸",
+    "number": 19,
+    "premium_stats": {
+      "xg_per_game": 0.40,
+      "injury_risk": "Low",
+      "scout_note": "Spain's creative wizard. Historic dribbling stats in knockout stages. Contributed with 1 goal and 4 assists."
+    }
+  },
+  {
+    "id": "eng_fw_kane",
+    "name": "Harry Kane",
+    "position": "FW",
+    "team": "England",
+    "price": 13.0,
+    "isAvailable": true,
+    "points": 89,
+    "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "number": 9,
+    "premium_stats": {
+      "xg_per_game": 0.58,
+      "injury_risk": "Low",
+      "scout_note": "Captain and focal point. Clinical finisher with 6 goals, crucial in dropping deep to playmake."
+    }
+  },
+  {
+    "id": "eng_fw_saka",
+    "name": "Bukayo Saka",
+    "position": "FW",
+    "team": "England",
+    "price": 11.5,
+    "isAvailable": true,
+    "points": 87,
+    "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "number": 7,
+    "premium_stats": {
+      "xg_per_game": 0.42,
+      "injury_risk": "Low",
+      "scout_note": "Direct and dangerous on the right. Exceptional link-up play with Bellingham and creative output."
+    }
+  }
+]

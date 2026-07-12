@@ -1,26 +1,213 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* ─── Colors (Lively World Cup Broadcast Light Style) ───────────────── */
+  --color-surface-bright: #ffffff;
+  --color-surface-dim: #f4f7f5;
+  --color-on-error-container: #410002;
+  --color-outline-variant: #cbd5e1;
+  --color-on-primary: #1e293b;
+  --color-on-background: #0f172a;
+  --color-background: #f1f5f9;
+  --color-tertiary: #475569;
+  --color-on-surface-variant: #64748b;
+  --color-surface-container-high: #ffffff;
+  --color-primary-container: #dfb53b;
+  --color-tertiary-container: #f1f5f9;
+  --color-surface-container-highest: #f1f5f9;
+  --color-surface-tint: #dfb53b;
+  --color-secondary-container: #2ecc71;
+  --color-error-container: #ffe4e6;
+  --color-surface-container-low: #f8fafc;
+  --color-on-secondary: #ffffff;
+  --color-on-tertiary: #ffffff;
+  --color-on-primary-container: #1e293b;
+  --color-outline: #94a3b8;
+  --color-surface-variant: #f8fafc;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-lowest: #ffffff;
+  --color-on-error: #ffffff;
+  --color-secondary: #2ecc71;
+  --color-inverse-on-surface: #ffffff;
+  --color-inverse-surface: #0f172a;
+  --color-error: #ef4444;
+  --color-surface: #ffffff;
+  --color-on-surface: #0f172a;
+  --color-surface-container: #f1f5f9;
+  --color-primary: #dfb53b;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  /* ─── Spacing ──────────────────────────────────────────────────────── */
+  --spacing-margin-mobile: 16px;
+  --spacing-margin-desktop: 64px;
+  --spacing-gutter: 24px;
+  --spacing-unit: 4px;
+  --spacing-stack-sm: 8px;
+  --spacing-stack-md: 16px;
+  --spacing-stack-lg: 32px;
+
+  /* ─── Fonts ────────────────────────────────────────────────────────── */
+  --font-display-lg: 'Oswald', sans-serif;
+  --font-body-md: 'Hanken Grotesk', sans-serif;
+  --font-label-sm: 'JetBrains Mono', monospace;
+  --font-display-lg-mobile: 'Oswald', sans-serif;
+  --font-body-lg: 'Hanken Grotesk', sans-serif;
+  --font-headline-md: 'Oswald', sans-serif;
+
+  /* ─── Font Sizes ───────────────────────────────────────────────────── */
+  --text-display-lg: 48px;
+  --text-display-lg--line-height: 56px;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg--font-weight: 700;
+
+  --text-body-md: 16px;
+  --text-body-md--line-height: 24px;
+  --text-body-md--font-weight: 400;
+
+  --text-label-sm: 12px;
+  --text-label-sm--line-height: 16px;
+  --text-label-sm--letter-spacing: 0.05em;
+  --text-label-sm--font-weight: 500;
+
+  --text-display-lg-mobile: 32px;
+  --text-display-lg-mobile--line-height: 40px;
+  --text-display-lg-mobile--letter-spacing: -0.01em;
+  --text-display-lg-mobile--font-weight: 700;
+
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 28px;
+  --text-body-lg--font-weight: 400;
+
+  --text-headline-md: 24px;
+  --text-headline-md--line-height: 32px;
+  --text-headline-md--letter-spacing: 0.01em;
+  --text-headline-md--font-weight: 600;
+
+  /* ─── Animations ───────────────────────────────────────────────────── */
+  --animate-pulse-glow: pulse-glow 2s infinite;
+  --animate-shimmer: shimmer 2.5s infinite;
+  --animate-shake: shake 0.5s ease-in-out;
+  --animate-fade-in: fade-in 0.3s ease-out;
+
+  @keyframes pulse-glow {
+    0% { box-shadow: 0 0 0 0 rgba(223, 181, 59, 0.7); }
+    70% { box-shadow: 0 0 0 12px rgba(223, 181, 59, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(223, 181, 59, 0); }
+  }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+    20%, 40%, 60%, 80% { transform: translateX(4px); }
+  }
+
+  @keyframes fade-in {
+    0% { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
   }
 }
 
+/* ─── Base ────────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #f1f5f9;
+  color: #0f172a;
+  font-family: var(--font-hanken, 'Hanken Grotesk'), sans-serif;
+}
+
+/* ─── Font Families ───────────────────────────────────────────────────── */
+.font-display {
+  font-family: var(--font-oswald, 'Oswald'), sans-serif;
+}
+
+.font-body {
+  font-family: var(--font-hanken, 'Hanken Grotesk'), sans-serif;
+}
+
+.font-mono-jb {
+  font-family: var(--font-jetbrains, 'JetBrains Mono'), monospace;
+}
+
+/* ─── Pitch ───────────────────────────────────────────────────────────── */
+.pitch-bg {
+  background: repeating-linear-gradient(
+    90deg,
+    #27ae60,
+    #27ae60 8%,
+    #219653 8%,
+    #219653 16%
+  );
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15), inset 0 0 60px rgba(0, 0, 0, 0.15);
+  border: 6px solid #ffffff;
+  border-radius: 12px;
+}
+
+.pitch-lines {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 150' width='100%25' height='100%25'%3E%3Crect x='3' y='3' width='94' height='144' fill='none' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3Crect x='1' y='1' width='98' height='148' fill='none' stroke='rgba(255,255,255,0.2)' stroke-width='0.3'/%3E%3Cline x1='3' y1='75' x2='97' y2='75' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3Ccircle cx='50' cy='75' r='15' fill='none' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3Ccircle cx='50' cy='75' r='1.2' fill='rgba(255,255,255,0.95)'/%3E%3Crect x='20' y='3' width='60' height='22' fill='none' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3Crect x='33' y='3' width='34' height='8' fill='none' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3Ccircle cx='50' cy='17' r='0.8' fill='rgba(255,255,255,0.95)'/%3E%3Cpath d='M35,25 A15,15 0 0,0 65,25' fill='none' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3Crect x='20' y='125' width='60' height='22' fill='none' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3Crect x='33' y='125' width='34' height='8' fill='none' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3Ccircle cx='50' cy='133' r='0.8' fill='rgba(255,255,255,0.95)'/%3E%3Cpath d='M35,125 A15,15 0 0,1 65,125' fill='none' stroke='rgba(255,255,255,0.85)' stroke-width='0.7'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+}
+
+/* ─── Player Cards ────────────────────────────────────────────────────── */
+.player-card {
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform-style: preserve-3d;
+}
+
+.player-card:hover {
+  transform: translateY(-10px) rotateX(10deg) rotateY(-5deg) scale(1.05);
+}
+
+/* ─── Glass & Effects ─────────────────────────────────────────────────── */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.glow-bloom {
+  box-shadow: 0 0 25px rgba(223, 181, 59, 0.5);
+}
+
+.pulse-node {
+  animation: pulse-glow 2s infinite;
+}
+
+/* ─── Textures & Gradients ────────────────────────────────────────────── */
+.leather-texture {
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+}
+
+.gold-gradient {
+  background: linear-gradient(45deg, #dfb53b, #f3d06a, #cba128);
+  color: #0f172a;
+}
+
+.emerald-gradient {
+  background: linear-gradient(45deg, #27ae60, #2ecc71);
+}
+
+/* ─── Scrollbar ───────────────────────────────────────────────────────── */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 9999px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.2);
 }
