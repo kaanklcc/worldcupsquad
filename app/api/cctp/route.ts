@@ -8,6 +8,27 @@ interface CCTPRequest {
 
 export async function POST(request: Request) {
   try {
+    // API Route Protection Check
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json(
+        { success: false, message: 'Yetkisiz erişim. Oturum açmanız gerekmektedir.' },
+        { status: 401 }
+      );
+    }
+
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const authRes = await fetch(`${API_URL}/api/auth/me`, {
+      headers: { 'Authorization': authHeader }
+    });
+
+    if (!authRes.ok) {
+      return NextResponse.json(
+        { success: false, message: 'Oturum geçersiz veya süresi dolmuş. Lütfen tekrar giriş yapın.' },
+        { status: 401 }
+      );
+    }
+
     const body: CCTPRequest = await request.json();
     const { walletAddress, amount, sourceChain } = body;
 

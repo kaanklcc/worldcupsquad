@@ -233,9 +233,13 @@ export default function HomePage() {
     setCctpLoading(true);
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+      const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/api/cctp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           walletAddress: 'inj1x8dq7f3k9v2m4n5p6r7s8t9u0w1x2y3z4k4m2',
           amount: 20,
@@ -281,9 +285,13 @@ export default function HomePage() {
 
       try {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+        const token = localStorage.getItem('token');
         const res = await fetch(`${API_URL}/api/agent`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
           body: JSON.stringify({
             prompt,
             hasPaidX402: isPremium,
