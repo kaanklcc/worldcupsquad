@@ -157,7 +157,16 @@ class GeminiAgentClient:
 
         except Exception as e:
             print(f"Gemini API error: {e}")
-            return self._rule_based_fallback(prompt, squad_player_ids, is_premium)
+            err_str = str(e)
+            warning = "⚠️ Not: Gemini API bağlantı hatası nedeniyle geçici olarak statik moda geçildi."
+            if "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower() or "429" in err_str:
+                warning = "⚠️ Not: Gemini API Kota Sınırına Ulaşıldı (429 Resource Exhausted). Lütfen Google AI Studio API anahtarınızın limitlerini kontrol edin veya bir süre bekleyin."
+            elif "API_KEY_INVALID" in err_str or "api key" in err_str.lower():
+                warning = "⚠️ Not: Geçersiz GEMINI_API_KEY. Lütfen backend/.env dosyasındaki API anahtarını kontrol edin."
+
+            fallback_res = self._rule_based_fallback(prompt, squad_player_ids, is_premium)
+            fallback_res.message = f"{warning}\n\n{fallback_res.message}"
+            return fallback_res
 
     def _extract_transfer_action(self, response, squad_player_ids: List[str]) -> Optional[SuggestedAction]:
         """Extract a transfer suggestion from the Gemini response or run the tool directly."""
