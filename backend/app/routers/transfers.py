@@ -1,28 +1,25 @@
 """
 POST /api/transfers/execute - Execute a transfer via MCP.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from ..models import TransferExecuteRequest, TransferExecuteResponse
 from ..mcp.client import get_mcp_client
 from ..data import get_players
+from .squads import get_current_user_id
+from ..db import get_db_connection
 
 
 router = APIRouter()
 
 
 @router.post("/api/transfers/execute", response_model=TransferExecuteResponse)
-async def execute_transfer(request: TransferExecuteRequest):
+async def execute_transfer(
+    request: TransferExecuteRequest,
+    user_id: int = Depends(get_current_user_id)
+):
     """
-    Execute a player transfer via the MCP server.
-
-    This endpoint:
-    1. Validates that both players exist
-    2. Calls the MCP server's apply_transfer tool
-    3. Returns the transaction hash and receipt
-
-    The transfer is executed on-chain (or simulated) and the result
-    is returned as an MCP receipt that can be used for verification.
+    Execute a player transfer via the MCP server and log the transaction in the database.
     """
     # Validate players exist
     players = get_players()
@@ -60,6 +57,24 @@ async def execute_transfer(request: TransferExecuteRequest):
         )
 
         if result.get("success"):
+            # Log completed transfer transaction in database
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO transfers (user_id, sell_player_id, buy_player_id, reasoning, tx_hash)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (user_id, request.sellPlayerId, request.buyPlayerId, request.reasoning, result["tx_hash"])
+                )
+                conn.commit()
+            except Exception as db_err:
+                conn.rollback()
+                conn.close()
+                raise HTTPException(status_code=500, detail=f"Database logging failed: {str(db_err)}")
+            conn.close()
+
             return TransferExecuteResponse(
                 success=True,
                 txHash=result["tx_hash"],

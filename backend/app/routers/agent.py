@@ -1,12 +1,13 @@
 """
 POST /api/agent - AI-powered football consultant with x402 payment gating.
 """
-from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from typing import Optional
 
 from ..models import AgentRequest, AgentResponse
 from ..agent.gemini_client import get_agent_client
 from ..x402 import get_x402_verifier
+from .squads import get_current_user_id
 
 
 router = APIRouter()
@@ -16,7 +17,8 @@ router = APIRouter()
 async def chat_with_agent(
     request: Request,
     x_payment: Optional[str] = Header(None, alias="X-Payment"),
-    x_payment_receipt: Optional[str] = Header(None, alias="X-Payment-Receipt")
+    x_payment_receipt: Optional[str] = Header(None, alias="X-Payment-Receipt"),
+    user_id: int = Depends(get_current_user_id)
 ):
     """
     Chat with the Auto-Gaffer AI consultant.

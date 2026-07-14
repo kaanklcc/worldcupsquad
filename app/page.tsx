@@ -73,6 +73,28 @@ export default function HomePage() {
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+  // Fetch squad lineup from SQLite database
+  const fetchSquadLineup = useCallback((token: string) => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    fetch(`${API_URL}/api/squad/load`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setBudget(data.budget);
+          setCctpUsed(data.cctpUsed);
+          if (data.squad && data.squad.length > 0) {
+            setSquad(data.squad);
+          }
+          if (data.bench && data.bench.length > 0) {
+            setBench(data.bench);
+          }
+        }
+      })
+      .catch(console.error);
+  }, []);
+
   // ─── Load players & Verify Token ───────────────────────────────────────────
   useEffect(() => {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -93,6 +115,7 @@ export default function HomePage() {
         .then(res => {
           if (res.ok) {
             setCurrentUser(username);
+            fetchSquadLineup(token);
           } else {
             localStorage.removeItem('token');
             localStorage.removeItem('username');
@@ -108,7 +131,7 @@ export default function HomePage() {
     } else {
       setAuthLoading(false);
     }
-  }, []);
+  }, [fetchSquadLineup]);
 
   // ─── Derived ────────────────────────────────────────────────────────────
   const squadPlayerIds = [
@@ -232,7 +255,7 @@ export default function HomePage() {
   const handleCCTP = useCallback(async () => {
     setCctpLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/api/cctp`, {
         method: 'POST',
@@ -284,7 +307,7 @@ export default function HomePage() {
       }
 
       try {
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const token = localStorage.getItem('token');
         const res = await fetch(`${API_URL}/api/agent`, {
           method: 'POST',
@@ -387,17 +410,42 @@ export default function HomePage() {
     handleAgentChat('Analyse my squad and suggest the best transfer', true);
   }, [handleAgentChat]);
 
-  // Execute changes sync handler
-  const handleExecuteChanges = useCallback(() => {
-    setIsSyncing(true);
-  }, []);
+
+
+    // Execute changes sync handler
+    const handleExecuteChanges = useCallback(async () => {
+      setIsSyncing(true);
+
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      try {
+        await fetch(`${API_URL}/api/squad/save`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            budget,
+            cctpUsed,
+            squad,
+            bench
+          })
+        });
+      } catch (err) {
+        console.error('Failed to save squad state in database:', err);
+      }
+    }, [budget, cctpUsed, squad, bench]);
 
   // Authentication Callbacks
   const handleLoginSuccess = useCallback((username: string, token: string) => {
     localStorage.setItem('token', token);
     localStorage.setItem('username', username);
     setCurrentUser(username);
-  }, []);
+    fetchSquadLineup(token);
+  }, [fetchSquadLineup]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
