@@ -19,7 +19,7 @@ class GeminiAgentClient:
 
     def __init__(self):
         self.client = None
-        self.model = "gemini-2.5-flash"
+        self.model = "gemini-2.0-flash"
 
         if settings.gemini_api_key:
             self.client = genai.Client(api_key=settings.gemini_api_key)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header, status
+from fastapi import APIRouter, HTTPException, Header, Depends, status
 from pydantic import BaseModel
 from typing import List, Optional, Literal
 
