@@ -10,6 +10,7 @@ interface ChatPanelProps {
   pendingAction: SuggestedAction | null;
   sellPlayer: Player | null;
   buyPlayer: Player | null;
+  players: Player[];
 }
 
 export default function ChatPanel({
@@ -21,11 +22,21 @@ export default function ChatPanel({
   pendingAction,
   sellPlayer,
   buyPlayer,
+  players,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
+  const lineupPlayers = (pendingAction?.startingPlayerIds ?? [])
+    .map((playerId) => players.find((player) => player.id === playerId))
+    .filter((player): player is Player => Boolean(player));
 
   const handleSendFree = () => {
     if (!input.trim()) return;
+    const confirmation = /^(yes|yeah|yep|evet|olur|uygula|tamam|apply|onayla)\b/i.test(input.trim());
+    if (pendingAction && confirmation) {
+      onApproveAction(pendingAction);
+      setInput('');
+      return;
+    }
     onSendMessage(input, false);
     setInput('');
   };
@@ -82,6 +93,13 @@ export default function ChatPanel({
                 {msg.isPremium && msg.role === 'assistant' && (
                   <div className="text-primary text-[10px] font-bold tracking-wider mb-1">
                     PREMIUM ANALYSIS
+                  </div>
+                )}
+                {msg.role === 'assistant' && msg.provider && (
+                  <div className={`text-[9px] font-bold tracking-wider mb-1 ${
+                    msg.provider === 'gemini' ? 'text-emerald-400' : 'text-amber-400'
+                  }`}>
+                    {msg.provider === 'gemini' ? 'GEMINI LIVE' : 'STATIC FALLBACK'}
                   </div>
                 )}
                 <p
@@ -173,6 +191,41 @@ export default function ChatPanel({
             >
               <span className="material-symbols-outlined">{actionLoading ? 'sync' : 'check_circle'}</span>
               {actionLoading ? 'EXECUTING VIA MCP...' : 'CONFIRM TACTICAL CHANGE'}
+            </button>
+          </div>
+        )}
+
+        {pendingAction?.type === 'lineup' && lineupPlayers.length === 11 && (
+          <div className="glass-panel rounded-xl p-5 mb-4 border border-primary/30 shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-display-lg text-body-lg uppercase text-on-surface">
+                AI Lineup Proposal
+              </h3>
+              <span className="material-symbols-outlined text-primary animate-pulse">sports_soccer</span>
+            </div>
+            <p className="text-xs text-on-surface-variant mb-3">
+              Formation: <strong>{pendingAction.formation}</strong>
+              {pendingAction.budgetUsed !== undefined && (
+                <> · Budget: <strong>{pendingAction.budgetUsed.toFixed(1)}M / 100M</strong></>
+              )}
+            </p>
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {lineupPlayers.map((player) => (
+                <span key={player.id} className="px-2 py-1 rounded bg-surface-container/70 border border-outline-variant/30 text-[10px] text-on-surface-variant">
+                  {player.name}
+                </span>
+              ))}
+            </div>
+            <p className="text-[11px] text-on-surface-variant/80 mb-4 leading-relaxed">
+              {pendingAction.reasoning}
+            </p>
+            <button
+              onClick={() => onApproveAction(pendingAction)}
+              disabled={actionLoading}
+              className="w-full emerald-gradient font-display-lg text-body-md uppercase text-on-primary py-3 rounded-sm shadow-lg hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait"
+            >
+              <span className="material-symbols-outlined">{actionLoading ? 'sync' : 'check_circle'}</span>
+              {actionLoading ? 'APPLYING LINEUP...' : 'APPLY AI LINEUP'}
             </button>
           </div>
         )}

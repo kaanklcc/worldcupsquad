@@ -80,6 +80,32 @@ class AutoGafferMCPServer:
                     }
                 ),
                 Tool(
+                    name="apply_lineup",
+                    description="Validate an explicitly confirmed starting XI and formation using catalog player IDs",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "formation": {
+                                "type": "string",
+                                "enum": ["4-3-3", "4-4-2", "3-5-2", "4-2-3-1", "5-3-2"]
+                            },
+                            "starting_player_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 11,
+                                "maxItems": 11
+                            },
+                            "bench_player_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "maxItems": 8
+                            },
+                            "reasoning": {"type": "string"}
+                        },
+                        "required": ["formation", "starting_player_ids"]
+                    }
+                ),
+                Tool(
                     name="get_player_details",
                     description="Get detailed information about a specific player",
                     inputSchema={
@@ -154,6 +180,42 @@ class AutoGafferMCPServer:
                         }, indent=2)
                     )
                 ]
+
+            elif name == "apply_lineup":
+                formation = arguments.get("formation")
+                starting_ids = arguments.get("starting_player_ids", [])
+                bench_ids = arguments.get("bench_player_ids", [])
+                counts = {
+                    "4-3-3": {"GK": 1, "DF": 4, "MF": 3, "FW": 3},
+                    "4-4-2": {"GK": 1, "DF": 4, "MF": 4, "FW": 2},
+                    "3-5-2": {"GK": 1, "DF": 3, "MF": 5, "FW": 2},
+                    "4-2-3-1": {"GK": 1, "DF": 4, "MF": 5, "FW": 1},
+                    "5-3-2": {"GK": 1, "DF": 5, "MF": 3, "FW": 2},
+                }
+                players = get_players()
+                catalog = {player.id: player for player in players}
+                all_ids = [*starting_ids, *bench_ids]
+                selected = [catalog.get(player_id) for player_id in all_ids]
+                if formation not in counts or len(starting_ids) != 11 or len(set(all_ids)) != len(all_ids):
+                    return [TextContent(type="text", text=json.dumps({"success": False, "error": "Invalid lineup shape"}))]
+                if any(player is None or not player.isAvailable for player in selected):
+                    return [TextContent(type="text", text=json.dumps({"success": False, "error": "Lineup contains an unknown or unavailable player"}))]
+                position_counts = {position: 0 for position in counts[formation]}
+                for player in selected[:11]:
+                    position_counts[player.position] += 1
+                if position_counts != counts[formation]:
+                    return [TextContent(type="text", text=json.dumps({"success": False, "error": "Lineup positions do not match formation"}))]
+                import time
+                return [TextContent(type="text", text=json.dumps({
+                    "success": True,
+                    "action": "apply_lineup",
+                    "formation": formation,
+                    "starting_player_ids": starting_ids,
+                    "bench_player_ids": bench_ids,
+                    "reasoning": arguments.get("reasoning", ""),
+                    "tx_hash": f"mcp_lineup_{int(time.time())}",
+                    "timestamp": time.time()
+                }, indent=2))]
 
             elif name == "set_formation":
                 formation = arguments.get("formation")

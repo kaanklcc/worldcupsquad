@@ -166,7 +166,10 @@ export default function PlayerSelectionModal({
                         <span>{player.team}</span>
                         <span>•</span>
                         <span className="font-bold font-label-sm text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">
-                          #{player.number}
+                          {player.number ? `#${player.number}` : 'FIFA roster'}
+                        </span>
+                        <span className="text-[9px] text-slate-400">
+                          WC26 · {player.data_updated_at ?? 'snapshot'}
                         </span>
                       </div>
                     </div>

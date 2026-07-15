@@ -3,7 +3,13 @@ from pydantic import BaseModel
 from typing import List, Optional, Literal
 
 from ..db import get_db_connection
-from ..models import SquadSlot, Player, PremiumStats, Formation
+from ..models import (
+    SquadSlot,
+    Player,
+    Formation,
+    LineupApplyRequest,
+    LineupApplyResponse,
+)
 from ..data import get_players
 from .auth import decode_token
 
@@ -17,6 +23,15 @@ class SquadSaveRequest(BaseModel):
     formation: Formation = '4-3-3'
     squad: List[SquadSlot]
     bench: List[SquadSlot]
+
+
+FORMATION_COUNTS = {
+    '4-3-3': {'GK': 1, 'DF': 4, 'MF': 3, 'FW': 3},
+    '4-4-2': {'GK': 1, 'DF': 4, 'MF': 4, 'FW': 2},
+    '3-5-2': {'GK': 1, 'DF': 3, 'MF': 5, 'FW': 2},
+    '4-2-3-1': {'GK': 1, 'DF': 4, 'MF': 5, 'FW': 1},
+    '5-3-2': {'GK': 1, 'DF': 5, 'MF': 3, 'FW': 2},
+}
 
 # ─── Auth Dependency Helper ────────────────────────────────────────────────────
 
@@ -34,26 +49,7 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> int:
 def fetch_player_by_id(cursor, player_id: Optional[str]) -> Optional[Player]:
     if not player_id:
         return None
-    cursor.execute("SELECT * FROM players WHERE id = ?", (player_id,))
-    r = cursor.fetchone()
-    if not r:
-        return None
-    return Player(
-        id=r["id"],
-        name=r["name"],
-        position=r["position"],
-        team=r["team"],
-        price=r["price"],
-        isAvailable=bool(r["is_available"]),
-        points=r["points"],
-        premium_stats=PremiumStats(
-            xg_per_game=r["xg_per_game"],
-            injury_risk=r["injury_risk"],
-            scout_note=r["scout_note"]
-        ),
-        flag=r["flag"],
-        number=r["number"]
-    )
+    return next((player for player in get_players() if player.id == player_id), None)
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -184,3 +180,116 @@ async def save_squad(req: SquadSaveRequest, user_id: int = Depends(get_current_u
         
     conn.close()
     return {"success": True, "message": "Squad saved successfully to database."}
+
+
+@router.post("/apply-lineup", response_model=LineupApplyResponse)
+async def apply_lineup(
+    req: LineupApplyRequest,
+    user_id: int = Depends(get_current_user_id),
+):
+    """Apply a confirmed AI lineup using catalog IDs only."""
+    counts = FORMATION_COUNTS[req.formation]
+    catalog = {player.id: player for player in get_players()}
+    all_ids = [*req.startingPlayerIds, *req.benchPlayerIds]
+
+    if len(set(all_ids)) != len(all_ids):
+        raise HTTPException(status_code=400, detail="A player cannot occupy more than one slot")
+
+    starting_players = []
+    for player_id in req.startingPlayerIds:
+        player = catalog.get(player_id)
+        if not player:
+            raise HTTPException(status_code=400, detail=f"Unknown player: {player_id}")
+        if not player.isAvailable:
+            raise HTTPException(status_code=400, detail=f"{player.name} is not available")
+        starting_players.append(player)
+
+    position_counts = {position: 0 for position in counts}
+    for player in starting_players:
+        position_counts[player.position] += 1
+    if position_counts != counts:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Lineup does not match {req.formation}: {position_counts}",
+        )
+
+    bench_players = []
+    for player_id in req.benchPlayerIds:
+        player = catalog.get(player_id)
+        if not player:
+            raise HTTPException(status_code=400, detail=f"Unknown bench player: {player_id}")
+        if not player.isAvailable:
+            raise HTTPException(status_code=400, detail=f"{player.name} is not available")
+        bench_players.append(player)
+
+    total_cost = sum(player.price for player in [*starting_players, *bench_players])
+    from ..mcp.client import get_mcp_client
+    mcp_result = await get_mcp_client().call_tool(
+        "apply_lineup",
+        {
+            "formation": req.formation,
+            "starting_player_ids": req.startingPlayerIds,
+            "bench_player_ids": req.benchPlayerIds,
+            "reasoning": req.reasoning,
+        },
+    )
+    if not mcp_result.get("success"):
+        raise HTTPException(status_code=502, detail=mcp_result.get("error", "MCP lineup validation failed"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT budget FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=404, detail="User not found")
+        if total_cost > user_row["budget"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lineup cost ({total_cost:g}M) exceeds the {user_row['budget']:g}M budget",
+            )
+
+        cursor.execute("UPDATE users SET formation = ? WHERE id = ?", (req.formation, user_id))
+        cursor.execute("DELETE FROM squad_slots WHERE user_id = ?", (user_id,))
+
+        position_indices = {position: 0 for position in counts}
+        for player in starting_players:
+            index = position_indices[player.position]
+            cursor.execute(
+                """
+                INSERT INTO squad_slots (user_id, position, slot_index, player_id, is_bench)
+                VALUES (?, ?, ?, ?, 0)
+                """,
+                (user_id, player.position, index, player.id),
+            )
+            position_indices[player.position] += 1
+
+        bench_indices = {"GK": 10, "DF": 10, "MF": 10, "FW": 10}
+        for player in bench_players:
+            index = bench_indices[player.position]
+            cursor.execute(
+                """
+                INSERT INTO squad_slots (user_id, position, slot_index, player_id, is_bench)
+                VALUES (?, ?, ?, ?, 1)
+                """,
+                (user_id, player.position, index, player.id),
+            )
+            bench_indices[player.position] += 1
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as error:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to apply lineup: {error}")
+    finally:
+        conn.close()
+
+    return LineupApplyResponse(
+        success=True,
+        message=f"{req.formation} AI lineup applied after explicit confirmation.",
+        formation=req.formation,
+        appliedPlayerIds=all_ids,
+        mcpReceipt=mcp_result,
+        simulated=mcp_result.get("simulated", False),
+    )

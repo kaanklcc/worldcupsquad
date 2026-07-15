@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Gemini LLM
     gemini_api_key: str = ""
     # Stable function-calling model. Override with GEMINI_MODEL when needed.
-    gemini_model: str = "gemini-3.5-flash"
+    gemini_model: str = "gemini-3.1-flash-lite"
 
     # Authentication. Override this in any shared or production environment.
     jwt_secret_key: str = "auto-gaffer-local-development-secret"

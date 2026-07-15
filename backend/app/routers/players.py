@@ -1,43 +1,21 @@
-"""
-GET /api/players - Returns all World Cup players.
-"""
+"""Player catalog endpoints backed by the current World Cup snapshot."""
+
 from fastapi import APIRouter
 from typing import List
 
-from ..db import get_db_connection
-from ..models import Player, PremiumStats
-
+from ..data import get_data_metadata, get_players
+from ..models import Player
 
 router = APIRouter()
 
 
 @router.get("/api/players", response_model=List[Player])
 async def get_all_players():
-    """
-    Get all available World Cup players from the SQLite database.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM players")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    players_list = []
-    for r in rows:
-        players_list.append(Player(
-            id=r["id"],
-            name=r["name"],
-            position=r["position"],
-            team=r["team"],
-            price=r["price"],
-            isAvailable=bool(r["is_available"]),
-            points=r["points"],
-            premium_stats=PremiumStats(
-                xg_per_game=r["xg_per_game"],
-                injury_risk=r["injury_risk"],
-                scout_note=r["scout_note"]
-            ),
-            flag=r["flag"],
-            number=r["number"]
-        ))
-    return players_list
+    """Return the 2026 semi-finalist roster catalog with provenance metadata."""
+    return get_players()
+
+
+@router.get("/api/players/meta")
+async def get_players_metadata():
+    """Return the snapshot date and official source URLs used by the catalog."""
+    return get_data_metadata()

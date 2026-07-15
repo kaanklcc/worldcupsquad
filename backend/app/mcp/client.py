@@ -128,6 +128,38 @@ class MCPClient:
                 "timestamp": time.time()
             }
 
+        elif tool_name == "apply_lineup":
+            from ..agent.skills import suggest_lineup
+            formation = arguments.get("formation", "4-3-3")
+            starting_ids = arguments.get("starting_player_ids", [])
+            bench_ids = arguments.get("bench_player_ids", [])
+            players = get_players()
+            catalog = {player.id: player for player in players}
+            selected = [catalog.get(player_id) for player_id in [*starting_ids, *bench_ids]]
+            if len(starting_ids) != 11 or len(set([*starting_ids, *bench_ids])) != len([*starting_ids, *bench_ids]):
+                return {"success": False, "error": "Invalid lineup shape", "simulated": True}
+            if any(player is None or not player.isAvailable for player in selected):
+                return {"success": False, "error": "Lineup contains an unknown or unavailable player", "simulated": True}
+            # Reuse the same position/formation validator as the agent skill.
+            expected = suggest_lineup(formation, "")
+            expected_positions = [catalog[player_id].position for player_id in expected.get("starting_player_ids", [])]
+            actual_positions = [player.position for player in selected[:11]]
+            if sorted(expected_positions) != sorted(actual_positions):
+                return {"success": False, "error": "Lineup positions do not match formation", "simulated": True}
+            return {
+                "success": True,
+                "action": "apply_lineup",
+                "formation": formation,
+                "starting_player_ids": starting_ids,
+                "bench_player_ids": bench_ids,
+                "reasoning": arguments.get("reasoning", ""),
+                "tx_hash": f"mcp_lineup_{int(time.time())}",
+                "timestamp": time.time(),
+                "mcp_version": "1.0.0",
+                "server": "auto-gaffer-mcp",
+                "simulated": True
+            }
+
         elif tool_name == "get_player_details":
             player_id = arguments.get("player_id")
             players = get_players()

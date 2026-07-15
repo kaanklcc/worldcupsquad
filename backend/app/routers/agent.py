@@ -73,7 +73,8 @@ async def chat_with_agent(
             prompt=agent_request.prompt,
             squad_player_ids=agent_request.squadPlayerIds,
             is_premium=is_premium,
-            x402_verified=x402_verified
+            x402_verified=x402_verified,
+            formation=agent_request.formation,
         )
 
         # Ensure payment status is reflected in the response

@@ -10,6 +10,7 @@ interface PitchProps {
   onChangeFormation: (formation: string) => void;
   bench: SquadSlot[];
   onBenchSlotClick: (slot: SquadSlot) => void;
+  onRemovePlayer: (slot: SquadSlot, isBench: boolean) => void;
   showBench: boolean;
   isPremiumUnlocked: boolean;
   onUnlockPremium: () => void;
@@ -22,6 +23,7 @@ export default function Pitch({
   onChangeFormation,
   bench,
   onBenchSlotClick,
+  onRemovePlayer,
   showBench,
   isPremiumUnlocked,
   onUnlockPremium,
@@ -224,6 +226,28 @@ export default function Pitch({
           <div className="absolute bottom-0 left-0 w-full h-1 bg-white/20 z-20">
             <div className={`h-full ${progressFill}`} style={{ width: `${pointsPct}%` }}></div>
           </div>
+
+          {/* Filled cards are replacement controls, not remove controls. */}
+          <div className="absolute inset-x-1 bottom-2 z-30 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            <span className="bg-slate-950/80 text-white rounded px-2 py-1 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
+              <span className="material-symbols-outlined text-[11px]">swap_horiz</span>
+              Replace player
+            </span>
+          </div>
+        </button>
+
+        {/* Separate sibling avoids invalid nested buttons while keeping the card clickable for replacement. */}
+        <button
+          type="button"
+          aria-label={`Remove ${player.name}`}
+          title="Remove player"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemovePlayer(slot, isBenchSlot);
+          }}
+          className="absolute -top-2 -right-2 z-50 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-red-600 text-white shadow-lg transition hover:scale-110 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300"
+        >
+          <span className="material-symbols-outlined text-[16px] font-bold">close</span>
         </button>
 
         {/* Floating Tooltip sibling (Hover Card) */}
@@ -254,9 +278,46 @@ export default function Pitch({
               </div>
             </div>
 
+            {/* World Cup 2026 provenance and verified tournament facts */}
+            <div className="flex flex-col gap-1.5 border-b border-slate-800 pb-2">
+              <div className="text-slate-500 uppercase text-[8px] font-mono-jb font-bold tracking-wider">
+                World Cup 2026 Data
+              </div>
+              <div className="text-[9px] text-slate-400 flex justify-between gap-2">
+                <span>Roster status</span>
+                <span className="text-emerald-300">{player.roster_status ?? 'snapshot'}</span>
+              </div>
+              <div className="text-[9px] text-slate-400 flex justify-between gap-2">
+                <span>Snapshot</span>
+                <span className="text-slate-200">{player.data_updated_at ?? 'unknown'}</span>
+              </div>
+              {player.world_cup_stats?.data_status === 'verified' ? (
+                <div className="text-[9px] text-slate-300">
+                  {player.world_cup_stats.goals ?? 0} goals · {player.world_cup_stats.assists ?? 0} assists · {player.world_cup_stats.minutes ?? 0} min
+                </div>
+              ) : (
+                <div className="text-[9px] text-amber-300/80 leading-relaxed">
+                  Tournament stat unavailable in the verified roster snapshot.
+                </div>
+              )}
+              {player.source_url && (
+                <a
+                  href={player.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  className="text-[9px] text-primary hover:underline"
+                >
+                  View FIFA source ↗
+                </a>
+              )}
+            </div>
+
             {/* Premium scouting stats */}
             <div className="flex flex-col gap-1">
-              <div className="text-slate-500 uppercase text-[8px] font-mono-jb font-bold tracking-wider">Scouting Analytics</div>
+              <div className="text-slate-500 uppercase text-[8px] font-mono-jb font-bold tracking-wider">
+                Model Scouting Estimate
+              </div>
               
               {isPremiumUnlocked ? (
                 <div className="flex flex-col gap-1 text-[10px]">
@@ -278,6 +339,11 @@ export default function Pitch({
                     <span className="material-symbols-outlined text-[11px]">verified</span>
                     Premium Tactical Unlocked
                   </div>
+                  {player.premium_stats.source_status !== 'verified' && (
+                    <div className="text-[8px] text-amber-300/80 text-center">
+                      App estimate; not an official FIFA tournament stat.
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-center p-2 rounded bg-slate-900/50 border border-slate-800/50">

@@ -1,0 +1,34 @@
+{
+  "tournament": "FIFA World Cup 2026",
+  "snapshotDate": "2026-07-15",
+  "dataSource": "FIFA World Cup 2026 match schedule and official match previews",
+  "sourceUrls": [
+    "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/match-schedule-fixtures-results-teams-stadiums",
+    "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/england-v-argentina-live-stream-team-news-tickets-and-more",
+    "https://www.fifa.com/es/tournaments/mens/worldcup/canadamexicousa2026/articles/francia-espana-copa-mundial-2026-cuando-es-como-ver-en-vivo-entradas-donde"
+  ],
+  "matches": [
+    {
+      "id": "wc26_sf_101",
+      "stage": "Semi-final",
+      "homeTeam": "France",
+      "awayTeam": "Spain",
+      "date": "2026-07-14",
+      "kickoffLocal": "15:00",
+      "venue": "Dallas Stadium",
+      "status": "fixture",
+      "result": null
+    },
+    {
+      "id": "wc26_sf_102",
+      "stage": "Semi-final",
+      "homeTeam": "England",
+      "awayTeam": "Argentina",
+      "date": "2026-07-15",
+      "kickoffLocal": "15:00",
+      "venue": "Atlanta Stadium",
+      "status": "fixture",
+      "result": null
+    }
+  ]
+}

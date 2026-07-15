@@ -6,47 +6,47 @@ DB_DIR = Path(__file__).parent.parent / "data"
 DB_FILE = DB_DIR / "auth.db"
 
 def seed_players(conn):
-    """Seed the players table from worldcup_players.json if empty."""
+    """Synchronize the SQLite player cache with the current roster catalog."""
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM players")
-    count = cursor.fetchone()[0]
-    if count > 0:
-        return
-    
-    import json
-    json_path = Path(__file__).parent.parent.parent / "data" / "worldcup_players.json"
-    if not json_path.exists():
-        print(f"Warning: worldcup_players.json not found at {json_path}")
-        return
-        
-    with open(json_path, 'r', encoding='utf-8') as f:
-        players_data = json.load(f)
-        
-    for p in players_data:
-        premium = p.get("premium_stats", {})
+    from .data import get_players
+
+    for player in get_players():
+        premium = player.premium_stats
         cursor.execute(
             """
-            INSERT OR IGNORE INTO players 
+            INSERT INTO players
             (id, name, position, team, price, is_available, points, xg_per_game, injury_risk, scout_note, flag, number)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                position = excluded.position,
+                team = excluded.team,
+                price = excluded.price,
+                is_available = excluded.is_available,
+                points = excluded.points,
+                xg_per_game = excluded.xg_per_game,
+                injury_risk = excluded.injury_risk,
+                scout_note = excluded.scout_note,
+                flag = excluded.flag,
+                number = excluded.number
             """,
             (
-                p["id"],
-                p["name"],
-                p["position"],
-                p["team"],
-                p["price"],
-                1 if p["isAvailable"] else 0,
-                p["points"],
-                premium.get("xg_per_game", 0.0),
-                premium.get("injury_risk", "Low"),
-                premium.get("scout_note", ""),
-                p.get("flag"),
-                p.get("number")
+                player.id,
+                player.name,
+                player.position,
+                player.team,
+                player.price,
+                1 if player.isAvailable else 0,
+                player.points,
+                premium.xg_per_game,
+                premium.injury_risk,
+                premium.scout_note,
+                player.flag,
+                player.number
             )
         )
     conn.commit()
-    print("Database: Seeded players from JSON successfully.")
+    print("Database: synchronized FIFA World Cup 2026 roster catalog.")
 
 def init_db():
     """Initialize the SQLite database and create users, players, and squads tables."""

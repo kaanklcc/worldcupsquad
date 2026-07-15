@@ -14,8 +14,11 @@ Python FastAPI backend for the Auto-Gaffer World Cup 2026 Fantasy Football Manag
 
 ### API Endpoints
 
-- `GET  /api/players` - Get all World Cup players (28 players with stats)
+- `GET  /api/players` - Get the 104-player FIFA roster snapshot for Argentina, England, France, and Spain
+- `GET  /api/players/meta` - Get roster snapshot date and FIFA source URLs
+- `GET  /api/worldcup/snapshot` - Get dated semifinal fixtures and provenance
 - `POST /api/agent` - Chat with AI consultant (free + premium via x402)
+- `POST /api/squad/apply-lineup` - Apply a confirmed, budget-validated AI lineup
 - `POST /api/cctp` - Bridge USDC from Ethereum to Injective
 - `POST /api/transfers/execute` - Execute transfers via MCP
 
@@ -29,6 +32,8 @@ The Gemini LLM has access to these tools:
 4. `suggest_transfer` - Recommend best transfer (sell weakest → buy strongest)
 5. `validate_budget` - Check if squad fits within budget
 6. `get_player_report` - Premium scouting report with xG and injury data
+7. `get_current_world_cup_data` - Read the dated FIFA roster and fixture snapshot
+8. `propose_lineup` - Build a position-valid starting XI with stable player IDs
 
 ### x402 Payment Verification
 
@@ -52,6 +57,7 @@ Bridge 20 USDC from Ethereum to Injective to expand squad budget:
 Standalone MCP server exposing squad tools:
 
 - `apply_transfer` - Execute player swap
+- `apply_lineup` - Validate a confirmed starting XI by player ID
 - `get_squad` - Get current squad state
 - `set_formation` - Change formation
 - `get_player_details` - Get player info

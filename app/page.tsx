@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt } from '@/types';
+import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt, LineupApplyReceipt } from '@/types';
 import Header from '@/components/Header';
 import Pitch from '@/components/Pitch';
 import ChatPanel from '@/components/ChatPanel';
@@ -242,36 +242,41 @@ export default function HomePage() {
 
   // Slot click → open modal or remove player
   const handleSlotClick = useCallback((slot: SquadSlot) => {
-    if (slot.player) {
-      // Remove player from slot
-      setSquad((prev) =>
-        prev.map((s) =>
-          s.position === slot.position && s.slotIndex === slot.slotIndex
-            ? { ...s, player: null }
-            : s
-        )
-      );
-    } else {
-      // Open selection modal
-      setSelectedSlot({ ...slot, isBench: false });
-      setModalOpen(true);
-    }
+    setSelectedSlot({ ...slot, isBench: false });
+    setModalOpen(true);
   }, []);
 
   // Bench slot click
   const handleBenchSlotClick = useCallback((slot: SquadSlot) => {
-    if (slot.player) {
-      setBench((prev) =>
-        prev.map((s) =>
-          s.position === slot.position && s.slotIndex === slot.slotIndex
-            ? { ...s, player: null }
-            : s
-        )
+    setSelectedSlot({ ...slot, isBench: true });
+    setModalOpen(true);
+  }, []);
+
+  const handleRemovePlayer = useCallback((slot: SquadSlot, isBench: boolean) => {
+    const playerName = slot.player?.name;
+    if (!playerName) return;
+
+    const updateSlots = (previous: SquadSlot[]) =>
+      previous.map((current) =>
+        current.position === slot.position && current.slotIndex === slot.slotIndex
+          ? { ...current, player: null }
+          : current
       );
+
+    if (isBench) {
+      setBench(updateSlots);
     } else {
-      setSelectedSlot({ ...slot, isBench: true });
-      setModalOpen(true);
+      setSquad(updateSlots);
     }
+
+    setMessages((previous) => [
+      ...previous,
+      {
+        id: `msg-${Date.now()}-remove`,
+        role: 'assistant',
+        content: `🗑️ **${playerName}** ${isBench ? 'yedeklerden' : 'sahadaki kadrodan'} çıkarıldı.`,
+      },
+    ]);
   }, []);
 
   // Player selection from modal
@@ -366,12 +371,15 @@ export default function HomePage() {
           suggestedAction?: SuggestedAction;
           isPremium: boolean;
           paymentVerified?: boolean;
+          provider?: 'gemini' | 'fallback';
+          model?: string;
         }>('/api/agent', {
           method: 'POST',
           body: JSON.stringify({
             prompt,
             hasPaidX402: isPremium,
             squadPlayerIds,
+            formation,
           }),
         });
         
@@ -382,13 +390,14 @@ export default function HomePage() {
           isPremium: data.isPremium,
           suggestedAction: data.suggestedAction,
           actionApplied: false,
+          provider: data.provider,
         };
         
         if (data.isPremium) {
           setIsPremiumUnlocked(true);
         }
         setMessages((prev) => [...prev, assistantMsg]);
-        if (isPremium && data.suggestedAction) {
+        if (data.suggestedAction) {
           setPendingAction(data.suggestedAction);
         }
       } catch (err) {
@@ -405,7 +414,7 @@ export default function HomePage() {
         setAgentLoading(false);
       }
     },
-    [squadPlayerIds]
+    [formation, squadPlayerIds]
   );
 
 
@@ -425,15 +434,45 @@ export default function HomePage() {
       ]);
       handleAgentChat('Analyse my squad and suggest the best transfer', true);
     } else if (tab === 'Matchday') {
+      const matchdayMessageId = `msg-matchday-${Date.now()}`;
       setActiveTab('AI Consultant');
       setMessages((prev) => [
         ...prev,
         {
-          id: `msg-matchday-${Date.now()}`,
+          id: matchdayMessageId,
           role: 'assistant',
-          content: `🏆 **MATCHDAY LIVE REPORT — 2026 World Cup Semi-Finals**\n\n🕒 Fixtures:\n• **Spain vs France** (July 14, 2026 - Dallas)\n• **England vs Argentina** (July 15, 2026 - Atlanta)\n\n⚽ Scout tips: Mbappe and Messi are tied at 8 goals. Bellingham has scored 6 goals. Make sure to optimize your lineup!`,
+          content: '🌐 **MATCHDAY DATA SYNC**\n\nFIFA World Cup 2026 fixture snapshot yükleniyor...',
         },
       ]);
+      apiFetch<{
+        snapshotDate: string;
+        matches: Array<{
+          homeTeam: string;
+          awayTeam: string;
+          date: string;
+          kickoffLocal: string;
+          venue: string;
+        }>;
+      }>('/api/worldcup/snapshot')
+        .then((snapshot) => {
+          const fixtures = snapshot.matches.map((match) =>
+            `• **${match.homeTeam} vs ${match.awayTeam}** — ${match.date} ${match.kickoffLocal} local, ${match.venue}`
+          ).join('\n');
+          setMessages((prev) => prev.map((message) => message.id === matchdayMessageId ? {
+            ...message,
+            content:
+              `🏆 **MATCHDAY — FIFA World Cup 2026**\n\n${fixtures}\n\n` +
+              `Data snapshot: **${snapshot.snapshotDate}**\n` +
+              `Skor ve resmi ilk 11 yalnızca doğrulanmış sonuç geldiğinde gösterilir.`,
+          } : message));
+        })
+        .catch((error) => {
+          setMessages((prev) => prev.map((message) => message.id === matchdayMessageId ? {
+            ...message,
+            content: `⚠️ Matchday verisi alınamadı: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          } : message));
+        });
+      return;
     } else if (tab === 'Finance') {
       setActiveTab('AI Consultant');
       setMessages((prev) => [
@@ -516,6 +555,74 @@ export default function HomePage() {
   // the AI analysed, then execute and display the returned MCP receipt.
   const handleApproveAction = useCallback(
     async (action: SuggestedAction) => {
+      if (action.type === 'lineup') {
+        const startingPlayerIds = action.startingPlayerIds ?? [];
+        const lineupFormation = action.formation;
+        if (!lineupFormation || startingPlayerIds.length !== 11) return;
+
+        const lineupPlayers = startingPlayerIds
+          .map((playerId) => players.find((player) => player.id === playerId))
+          .filter((player): player is Player => Boolean(player));
+        if (lineupPlayers.length !== 11) return;
+
+        setActionExecuting(true);
+        try {
+          const receipt = await apiFetch<LineupApplyReceipt>('/api/squad/apply-lineup', {
+            method: 'POST',
+            body: JSON.stringify({
+              formation: lineupFormation,
+              startingPlayerIds,
+              benchPlayerIds: action.benchPlayerIds ?? [],
+              reasoning: action.reasoning,
+            }),
+          });
+
+          const byPosition: Record<Player['position'], Player[]> = {
+            GK: lineupPlayers.filter((player) => player.position === 'GK'),
+            DF: lineupPlayers.filter((player) => player.position === 'DF'),
+            MF: lineupPlayers.filter((player) => player.position === 'MF'),
+            FW: lineupPlayers.filter((player) => player.position === 'FW'),
+          };
+          const appliedSquad = createSquadForFormation(lineupFormation).map((slot) => ({
+            ...slot,
+            player: byPosition[slot.position].shift() ?? null,
+          }));
+
+          setFormation(lineupFormation);
+          setSquad(appliedSquad);
+          setBench(createInitialBench());
+          setMessages((prev) => [
+            ...prev.map((msg) =>
+              msg.suggestedAction?.type === 'lineup' &&
+              msg.suggestedAction?.formation === lineupFormation
+                ? { ...msg, actionApplied: true }
+                : msg
+            ),
+            {
+              id: `msg-${Date.now()}-lineup`,
+              role: 'assistant',
+              content:
+                `✅ **AI kadrosu uygulandı**\n\n${receipt.message}\n` +
+                `Formation: **${receipt.formation}**\n` +
+                `Oyuncular: **${receipt.appliedPlayerIds.length}**\n` +
+                `MCP receipt: ${String((receipt.mcpReceipt as Record<string, unknown> | undefined)?.tx_hash ?? 'confirmed')}` +
+                `${receipt.simulated ? '\n_Not: MCP işlemi demo transportunda simüle edildi._' : ''}`,
+            },
+          ]);
+          setPendingAction(null);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Kadro uygulanamadı.';
+          setMessages((prev) => [
+            ...prev,
+            { id: `msg-${Date.now()}-lineup-error`, role: 'assistant', content: `❌ Kadro reddedildi: ${message}` },
+          ]);
+        } finally {
+          setActionExecuting(false);
+        }
+        return;
+      }
+
+      if (!action.sellPlayerId || !action.buyPlayerId) return;
       const sellPlayer = players.find((p) => p.id === action.sellPlayerId);
       const buyPlayer = players.find((p) => p.id === action.buyPlayerId);
       if (!sellPlayer || !buyPlayer) return;
@@ -619,6 +726,7 @@ export default function HomePage() {
               onChangeFormation={handleFormationChange}
               bench={bench}
               onBenchSlotClick={handleBenchSlotClick}
+              onRemovePlayer={handleRemovePlayer}
               showBench={activeTab === 'Substitutions'}
               isPremiumUnlocked={isPremiumUnlocked}
               onUnlockPremium={handleUnlockPremium}
@@ -634,6 +742,7 @@ export default function HomePage() {
               pendingAction={pendingAction}
               sellPlayer={pendingAction ? players.find(p => p.id === pendingAction.sellPlayerId) || null : null}
               buyPlayer={pendingAction ? players.find(p => p.id === pendingAction.buyPlayerId) || null : null}
+              players={players}
             />
           </div>
 

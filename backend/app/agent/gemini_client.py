@@ -4,6 +4,7 @@ Includes fallback to rule-based logic when no API key is configured.
 """
 import json
 import asyncio
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from google import genai
@@ -31,12 +32,17 @@ class GeminiAgentClient:
         """Check if the Gemini client is properly configured."""
         return self.client is not None
 
-    def _build_tools(self, squad_player_ids: List[str], is_premium: bool) -> list:
+    def _build_tools(
+        self,
+        squad_player_ids: List[str],
+        is_premium: bool,
+        current_formation: str = '4-3-3',
+    ) -> list:
         """
         Build tool functions with squad context captured via closures.
         The google-genai SDK auto-generates FunctionDeclarations from these.
         """
-        from ..data import get_players
+        from ..data import get_players, get_world_cup_snapshot
         from .skills import _normalize
 
         def search_player(name_query: str) -> dict:
@@ -91,6 +97,39 @@ class GeminiAgentClient:
             """
             return skills.validate_budget(squad_player_ids, max_budget)
 
+        def get_current_world_cup_data(topic: str = "") -> dict:
+            """Return the dated FIFA World Cup 2026 roster and semifinal fixture snapshot.
+
+            Args:
+                topic: Optional team, player, match, date or venue keyword to filter fixtures.
+            """
+            return get_world_cup_snapshot(topic)
+
+        def propose_lineup(
+            formation: str = current_formation,
+            match_context: str = "",
+            required_player_ids: Optional[List[str]] = None,
+            strategy: str = "balanced",
+            position_team_preferences: Optional[dict] = None,
+        ) -> dict:
+            """Propose a budget-valid starting XI using stable catalog player IDs.
+
+            Args:
+                formation: One of 4-3-3, 4-4-2, 3-5-2, 4-2-3-1 or 5-3-2.
+                match_context: Match or tactical context such as 'England vs Argentina'.
+                required_player_ids: Player IDs explicitly requested by the user.
+                strategy: 'balanced', 'attacking' or 'defensive'.
+                position_team_preferences: Optional position-to-team preferences, e.g. {'DF': ['Spain']}.
+            """
+            return skills.suggest_lineup(
+                formation,
+                match_context,
+                required_player_ids=required_player_ids,
+                strategy=strategy,
+                position_team_preferences=position_team_preferences,
+                current_squad_player_ids=squad_player_ids,
+            )
+
         def get_player_report(player_id: str) -> dict:
             """Get a detailed premium scouting report for a specific player including xG, injury risk, and scout notes.
 
@@ -100,61 +139,138 @@ class GeminiAgentClient:
             return skills.get_player_report(player_id)
 
         # Only expose premium tools if user has premium access
-        all_tools = [search_player, rank_position, analyze_squad, validate_budget]
+        all_tools = [
+            search_player,
+            rank_position,
+            analyze_squad,
+            validate_budget,
+            get_current_world_cup_data,
+            propose_lineup,
+        ]
         if is_premium:
             all_tools.extend([suggest_transfer, get_player_report])
 
         return all_tools
+
+    @staticmethod
+    def _is_retryable_model_error(error: Exception) -> bool:
+        """Identify transient/provider model errors without hiding auth errors."""
+        error_text = str(error).upper()
+        return any(marker in error_text for marker in (
+            '503', 'UNAVAILABLE', '429', 'RESOURCE_EXHAUSTED',
+            '500', 'INTERNAL', '504', 'DEADLINE_EXCEEDED',
+            '404', 'NOT_FOUND',
+        ))
+
+    async def _generate_with_failover(self, prompt: str, system_instruction: str, tools: list):
+        """Call Gemini with a short retry and a supported model fallback.
+
+        A provider-side 503 must not force the whole product into rule-based
+        mode when another model exposed by the same API key is healthy.
+        """
+        candidates = []
+        for model in (self.model, 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest'):
+            if model and model not in candidates:
+                candidates.append(model)
+
+        last_error: Optional[Exception] = None
+        for model in candidates:
+            for attempt in range(2):
+                try:
+                    response = await asyncio.to_thread(
+                        self.client.models.generate_content,
+                        model=model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            tools=tools,
+                            temperature=0.7,
+                            max_output_tokens=2048,
+                        ),
+                    )
+                    if model != self.model:
+                        print(f"Gemini model failover succeeded with {model}")
+                    return response
+                except Exception as error:
+                    last_error = error
+                    if not self._is_retryable_model_error(error):
+                        break
+                    if attempt == 0:
+                        await asyncio.sleep(1.0)
+
+        if last_error:
+            raise last_error
+        raise RuntimeError('No Gemini model candidate is configured')
 
     async def chat(
         self,
         prompt: str,
         squad_player_ids: List[str],
         is_premium: bool = False,
-        x402_verified: bool = False
+        x402_verified: bool = False,
+        formation: str = '4-3-3',
     ) -> AgentResponse:
         """
         Chat with the agent via Gemini tool-calling or rule-based fallback.
         """
         if not self.client:
-            return self._rule_based_fallback(prompt, squad_player_ids, is_premium)
+            return self._rule_based_fallback(
+                prompt,
+                squad_player_ids,
+                is_premium,
+                formation,
+            )
 
         try:
             access_level = "PREMIUM (x402 verified)" if is_premium else "FREE"
+            from ..data import get_data_metadata
+            data_snapshot = get_data_metadata()
             system_instruction = (
                 f"{SYSTEM_PROMPT}\n\n"
+                f"SERVER REQUEST TIME (UTC): {datetime.now(timezone.utc).isoformat()}\n"
+                f"CURRENT WORLD CUP DATA SNAPSHOT: {json.dumps(data_snapshot, ensure_ascii=False)}\n"
+                f"CURRENT UI FORMATION: {formation}\n"
                 f"CURRENT ACCESS LEVEL: {access_level}\n"
                 f"CURRENT SQUAD PLAYER IDS: {json.dumps(squad_player_ids)}\n"
                 f"Premium features (xG, injury risk, transfer suggestions) are "
                 f"{'ENABLED' if is_premium else 'DISABLED - only give basic info and suggest upgrading'}."
             )
 
-            tools = self._build_tools(squad_player_ids, is_premium)
+            tools = self._build_tools(squad_player_ids, is_premium, formation)
 
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    tools=tools,
-                    temperature=0.7,
-                    max_output_tokens=2048,
-                ),
-            )
+            response = await self._generate_with_failover(prompt, system_instruction, tools)
 
             message = response.text if response.text else "I couldn't process your request, gaffer."
 
             # Check for transfer suggestions in the automatic function calling history
             suggested_action = None
-            if is_premium:
+            lineup_request = (
+                self._is_lineup_request(prompt)
+                or bool(skills.extract_player_ids_from_prompt(prompt))
+                or bool(skills.extract_position_team_preferences(prompt))
+            )
+            if lineup_request:
+                suggested_action = self._extract_lineup_action(
+                    prompt,
+                    squad_player_ids,
+                    formation,
+                )
+            elif is_premium:
                 suggested_action = self._extract_transfer_action(response, squad_player_ids)
+
+            # The structured action is authoritative. Returning Gemini's raw
+            # lineup prose here could show different names/formation than the
+            # IDs that the pitch will actually apply.
+            if suggested_action and suggested_action.type == 'lineup':
+                message = self._format_lineup_message(suggested_action)
 
             return AgentResponse(
                 message=message,
                 suggestedAction=suggested_action,
                 isPremium=is_premium,
-                paymentVerified=x402_verified
+                paymentVerified=x402_verified,
+                provider='gemini',
+                model=self.model,
             )
 
         except Exception as e:
@@ -166,9 +282,49 @@ class GeminiAgentClient:
             elif "API_KEY_INVALID" in err_str or "api key" in err_str.lower():
                 warning = "⚠️ Not: Geçersiz GEMINI_API_KEY. Lütfen backend/.env dosyasındaki API anahtarını kontrol edin."
 
-            fallback_res = self._rule_based_fallback(prompt, squad_player_ids, is_premium)
+            fallback_res = self._rule_based_fallback(
+                prompt,
+                squad_player_ids,
+                is_premium,
+                formation,
+            )
             fallback_res.message = f"{warning}\n\n{fallback_res.message}"
+            fallback_res.provider = 'fallback'
+            fallback_res.model = None
             return fallback_res
+
+    def _format_lineup_message(self, action: SuggestedAction) -> str:
+        """Render the exact structured XI shown in the UI proposal card."""
+        catalog = {player.id: player for player in skills.get_players()}
+        selected = [
+            catalog[player_id]
+            for player_id in (action.startingPlayerIds or [])
+            if player_id in catalog
+        ]
+        grouped = {
+            position: [player.name for player in selected if player.position == position]
+            for position in ('GK', 'DF', 'MF', 'FW')
+        }
+        budget = (
+            f"{action.budgetUsed:.1f}M / 100M"
+            if action.budgetUsed is not None else 'validated by backend'
+        )
+        points = (
+            f"{action.totalPoints} fantasy points"
+            if action.totalPoints is not None else 'catalog ranking'
+        )
+        return (
+            f"⚽ **{action.formation} World Cup 2026 kadro önerisi**\n\n"
+            f"**GK:** {', '.join(grouped['GK'])}\n"
+            f"**DF:** {', '.join(grouped['DF'])}\n"
+            f"**MF:** {', '.join(grouped['MF'])}\n"
+            f"**FW:** {', '.join(grouped['FW'])}\n\n"
+            f"**Bütçe:** {budget} · **Skor:** {points}\n"
+            f"{action.reasoning}\n\n"
+            "Bu kadro resmi ilk 11 değil; mevcut FIFA World Cup 2026 snapshotı "
+            "ve uygulama fantasy skorlarıyla oluşturulmuş bütçe geçerli bir öneridir. "
+            "Kadroyu sahaya yerleştireyim mi?"
+        )
 
     def _extract_transfer_action(self, response, squad_player_ids: List[str]) -> Optional[SuggestedAction]:
         """Extract a transfer suggestion from the Gemini response or run the tool directly."""
@@ -184,14 +340,120 @@ class GeminiAgentClient:
             )
         return None
 
+    @staticmethod
+    def _is_lineup_request(prompt: str) -> bool:
+        """Detect lineup intent without trusting arbitrary model prose."""
+        prompt_lower = skills._normalize(prompt)
+        lineup_terms = (
+            'lineup', 'starting xi', 'starting eleven', 'first eleven',
+            'kadro', 'kadrosu', 'ilk 11', 'ilk on bir', 'dizilis',
+            'hangi oyuncu', 'oyuncu al', 'almal', 'bu geceki mac', 'mac icin', 'matchday',
+            'diziliş', 'sahaya', 'starting team', 'team suggestion',
+        )
+        if any(term in prompt_lower for term in lineup_terms):
+            return True
+        tactical_terms = (
+            'defans', 'savunma', 'orta saha', 'hucum', 'forvet',
+            'goalkeeper', 'defender', 'midfielder', 'forward',
+        )
+        action_terms = (
+            'kur', 'olustur', 'oner', 'yerlestir', 'istiyorum',
+            'build', 'create', 'suggest', 'place',
+        )
+        return (
+            any(term in prompt_lower for term in tactical_terms)
+            and any(term in prompt_lower for term in action_terms)
+        )
+
+    def _extract_lineup_action(
+        self,
+        prompt: str,
+        squad_player_ids: Optional[List[str]] = None,
+        current_formation: str = '4-3-3',
+    ) -> Optional[SuggestedAction]:
+        """Build a structured UI action that honors explicit player requests."""
+        formation = current_formation
+        prompt_normalized = skills._normalize(prompt)
+        for candidate in ('4-2-3-1', '4-4-2', '3-5-2', '5-3-2', '4-3-3'):
+            if candidate in prompt_normalized:
+                formation = candidate
+                break
+
+        required_player_ids = skills.extract_player_ids_from_prompt(prompt)
+        position_team_preferences = skills.extract_position_team_preferences(prompt)
+        attacking_terms = (
+            'hucum', 'attacking', 'attack', 'ofansif', 'gol', 'golcu',
+            'forvet', 'bitiricilik', 'hucum gucu', 'assist', 'asist',
+            'skor', 'scorer', 'goal contribution',
+        )
+        defensive_terms = (
+            'gol yemeyen', 'clean sheet', 'savunma guvenligi',
+            'defansif', 'defensive', 'defans', 'savunma',
+        )
+        wants_attack = any(term in prompt_normalized for term in attacking_terms)
+        wants_defense = any(term in prompt_normalized for term in defensive_terms)
+        strategy = (
+            'attacking'
+            if wants_attack
+            else 'defensive' if wants_defense
+            else 'balanced'
+        )
+        lineup = skills.suggest_lineup(
+            formation,
+            prompt,
+            required_player_ids=required_player_ids,
+            strategy=strategy,
+            position_team_preferences=position_team_preferences,
+            current_squad_player_ids=squad_player_ids,
+        )
+        if 'starting_player_ids' not in lineup:
+            return None
+        catalog = {player.id: player for player in skills.get_players()}
+        required_names = [
+            catalog[player_id].name
+            for player_id in required_player_ids
+            if player_id in catalog
+        ]
+        requirement_note = (
+            f" Explicitly requested players included: {', '.join(required_names)}."
+            if required_names else ''
+        )
+        strategy_note = (
+            ' Attacking contribution priority applied.'
+            if strategy == 'attacking'
+            else ' Defensive stability priority applied.'
+            if strategy == 'defensive'
+            else ''
+        )
+        preference_note = (
+            ' Positional team preferences: '
+            + ', '.join(
+                f"{position}={', '.join(teams)}"
+                for position, teams in position_team_preferences.items()
+            )
+            + '.'
+            if position_team_preferences else ''
+        )
+        return SuggestedAction(
+            type='lineup',
+            formation=lineup['formation'],
+            startingPlayerIds=lineup['starting_player_ids'],
+            benchPlayerIds=[],
+            budgetUsed=lineup['budget_used'],
+            totalPoints=lineup['total_points'],
+            strategy=strategy,
+            reasoning=lineup['reasoning'] + requirement_note + preference_note + strategy_note,
+        )
+
     def _rule_based_fallback(
         self,
         prompt: str,
         squad_player_ids: List[str],
-        is_premium: bool
+        is_premium: bool,
+        formation: str = '4-3-3',
     ) -> AgentResponse:
         """Fallback to rule-based logic when Gemini is unavailable."""
-        prompt_lower = prompt.lower()
+        prompt_lower = skills._normalize(prompt)
 
         # Greetings
         if prompt_lower.startswith(('hi', 'hello', 'hey', 'sup', 'yo')):
@@ -203,6 +465,40 @@ class GeminiAgentClient:
                 ),
                 isPremium=False
             )
+
+        # Lineup proposals remain usable in fallback mode so the core fan
+        # experience does not disappear when Gemini is unavailable.
+        lineup_request = (
+            self._is_lineup_request(prompt)
+            or bool(skills.extract_player_ids_from_prompt(prompt))
+            or bool(skills.extract_position_team_preferences(prompt))
+        )
+        if lineup_request:
+            action = self._extract_lineup_action(prompt, squad_player_ids, formation)
+            if action and action.startingPlayerIds:
+                return AgentResponse(
+                    message=self._format_lineup_message(action),
+                    suggestedAction=action,
+                    isPremium=is_premium,
+                )
+                catalog = {player.id: player for player in skills.get_players()}
+                selected = [catalog[player_id] for player_id in action.startingPlayerIds if player_id in catalog]
+                grouped = {
+                    'GK': [player.name for player in selected if player.position == 'GK'],
+                    'DF': [player.name for player in selected if player.position == 'DF'],
+                    'MF': [player.name for player in selected if player.position == 'MF'],
+                    'FW': [player.name for player in selected if player.position == 'FW'],
+                }
+                message = (
+                    f"⚽ **{action.formation} kadro önerisi**\n\n"
+                    f"GK: {', '.join(grouped['GK'])}\n"
+                    f"DF: {', '.join(grouped['DF'])}\n"
+                    f"MF: {', '.join(grouped['MF'])}\n"
+                    f"FW: {', '.join(grouped['FW'])}\n\n"
+                    "Bu öneri FIFA 2026 kadro snapshotındaki oyuncularla oluşturuldu; "
+                    "resmi ilk 11 değildir. Kadroyu sahaya yerleştireyim mi?"
+                )
+                return AgentResponse(message=message, suggestedAction=action, isPremium=is_premium)
 
         # Squad analysis
         if any(kw in prompt_lower for kw in ['squad', 'team', 'lineup', 'analyse', 'analyze']):
@@ -308,6 +604,24 @@ class GeminiAgentClient:
                 )
 
         # Default
+        scope_terms = (
+            'world cup', 'worldcup', 'world cup 2026', 'fifa', 'football',
+            'soccer', 'player', 'squad', 'team', 'lineup', 'kadro', 'oyuncu',
+            'maç', 'mac', 'match', 'transfer', 'formation', 'diziliş',
+            'dizilis', 'goalkeeper', 'defender', 'midfielder', 'forward',
+            'forvet', 'defans', 'orta saha', 'kaleci', 'injury', 'sakat',
+            'budget', 'bütçe', 'xg', 'injective', 'x402', 'cctp', 'mcp',
+        )
+        if not any(term in prompt_lower for term in scope_terms):
+            return AgentResponse(
+                message=(
+                    "Bu konuda yardımcı olamam, gaffer. Auto-Gaffer yalnızca "
+                    "FIFA World Cup 2026, futbol maçları, oyuncular ve kadro "
+                    "yönetimi hakkında yanıt verir."
+                ),
+                isPremium=is_premium,
+            )
+
         return AgentResponse(
             message=(
                 "Good question, gaffer. I can help with player analysis, squad composition, "
