@@ -128,13 +128,15 @@ export default function PlayerSelectionModal({
                   <button
                     key={player.id}
                     onClick={() => {
-                      if (exceedsBudget) return;
+                      if (exceedsBudget || !player.isAvailable) return;
                       onSelectPlayer(player);
                     }}
-                    disabled={exceedsBudget}
+                    disabled={exceedsBudget || !player.isAvailable}
                     className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left group ${
                       !player.isAvailable 
                         ? 'opacity-60 border-outline-variant/10 hover:border-outline-variant/30 cursor-pointer' 
+                        : !player.isAvailable
+                        ? 'border-error/20 bg-error/5 opacity-50 cursor-not-allowed'
                         : exceedsBudget
                         ? 'border-error/20 bg-error/5 opacity-50 cursor-not-allowed'
                         : 'border-outline-variant/20 hover:border-secondary/50 bg-surface hover:bg-surface-container-high cursor-pointer'

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { Player, SquadSlot } from '@/types';
+import { SquadSlot } from '@/types';
 
 interface PitchProps {
   squad: SquadSlot[];
@@ -272,7 +272,7 @@ export default function Pitch({
                     }`}>{player.premium_stats.injury_risk}</span>
                   </div>
                   <div className="text-slate-400 text-[10px] italic bg-slate-900/60 p-2 rounded border border-slate-800/80 mt-1 leading-relaxed">
-                    "{player.premium_stats.scout_note}"
+                     &quot;{player.premium_stats.scout_note}&quot;
                   </div>
                   <div className="text-[9px] text-amber-400 font-bold flex items-center gap-1 mt-1 justify-center">
                     <span className="material-symbols-outlined text-[11px]">verified</span>
@@ -453,7 +453,7 @@ export default function Pitch({
           
           {/* Horizontal Scrollable Bench Slots */}
           <div className="flex gap-3 overflow-x-auto py-1 px-0.5 scrollbar-thin">
-            {bench.map((slot, index) => renderSlot(slot, true))}
+            {bench.map((slot) => renderSlot(slot, true))}
           </div>
         </div>
       )}

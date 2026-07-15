@@ -77,6 +77,10 @@ def init_db():
         cursor.execute("ALTER TABLE users ADD COLUMN cctp_used INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN formation TEXT DEFAULT '4-3-3'")
+    except sqlite3.OperationalError:
+        pass
         
     # 2. Create players table
     cursor.execute("""

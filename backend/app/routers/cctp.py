@@ -33,6 +33,19 @@ async def bridge_usdc(
         raise HTTPException(status_code=400, detail="Source chain is required")
 
     try:
+        # The bridge is a one-time budget boost. Enforce this on the server as
+        # well as in the UI so repeated requests cannot mint budget twice.
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT budget, cctp_used FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        conn.close()
+
+        if not user_row:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user_row["cctp_used"]:
+            raise HTTPException(status_code=409, detail="CCTP backing has already been acquired")
+
         cctp = get_cctp_flow()
         
         # Perform the bridge (real or simulated)
@@ -47,17 +60,18 @@ async def bridge_usdc(
             conn = get_db_connection()
             cursor = conn.cursor()
             try:
-                # 1. Fetch current budget
-                cursor.execute("SELECT budget FROM users WHERE id = ?", (user_id,))
-                user_row = cursor.fetchone()
-                current_budget = user_row["budget"] if user_row else 100.0
+                # 1. Use the current server-side budget, never a client value.
+                current_budget = user_row["budget"]
                 new_budget = current_budget + request.amount
                 
                 # 2. Update budget and cctp_used
                 cursor.execute(
-                    "UPDATE users SET budget = ?, cctp_used = 1 WHERE id = ?",
+                    "UPDATE users SET budget = ?, cctp_used = 1 WHERE id = ? AND cctp_used = 0",
                     (new_budget, user_id)
                 )
+                if cursor.rowcount != 1:
+                    conn.rollback()
+                    raise HTTPException(status_code=409, detail="CCTP backing has already been acquired")
                 
                 # 3. Log CCTP bridge transaction
                 cursor.execute(
@@ -68,6 +82,10 @@ async def bridge_usdc(
                     (user_id, request.walletAddress, request.amount, request.sourceChain, result["final_tx_hash"])
                 )
                 conn.commit()
+            except HTTPException:
+                conn.rollback()
+                conn.close()
+                raise
             except Exception as db_err:
                 conn.rollback()
                 conn.close()
@@ -84,5 +102,7 @@ async def bridge_usdc(
         else:
             raise HTTPException(status_code=500, detail="CCTP bridge failed")
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"CCTP bridge error: {str(e)}")

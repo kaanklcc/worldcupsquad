@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import type { Player, SquadSlot, ChatMessage, SuggestedAction } from '@/types';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt } from '@/types';
 import Header from '@/components/Header';
 import Pitch from '@/components/Pitch';
 import ChatPanel from '@/components/ChatPanel';
@@ -9,22 +9,38 @@ import PlayerSelectionModal from '@/components/PlayerSelectionModal';
 import Sidebar from '@/components/Sidebar';
 import ExecuteSyncModal from '@/components/ExecuteSyncModal';
 import AuthOverlay from '@/components/AuthOverlay';
+import { apiFetch } from '@/lib/api';
+
+type SelectedSlot = SquadSlot & { isBench: boolean };
+
+const FORMATION_COUNTS: Record<string, { df: number; mf: number; fw: number }> = {
+  '4-3-3': { df: 4, mf: 3, fw: 3 },
+  '4-2-3-1': { df: 4, mf: 5, fw: 1 },
+  '3-5-2': { df: 3, mf: 5, fw: 2 },
+  '4-4-2': { df: 4, mf: 4, fw: 2 },
+  '5-3-2': { df: 5, mf: 3, fw: 2 },
+};
+
+function createSquadForFormation(formation: string): SquadSlot[] {
+  const counts = FORMATION_COUNTS[formation] ?? FORMATION_COUNTS['4-3-3'];
+  const slots: SquadSlot[] = [{ position: 'GK', slotIndex: 0, player: null }];
+
+  for (const [position, count] of [
+    ['DF', counts.df],
+    ['MF', counts.mf],
+    ['FW', counts.fw],
+  ] as const) {
+    for (let index = 0; index < count; index++) {
+      slots.push({ position, slotIndex: index, player: null });
+    }
+  }
+
+  return slots;
+}
 
 // ─── Initial Squad (4-3-3) ─────────────────────────────────────────────────────
 function createInitialSquad(): SquadSlot[] {
-  const positions: { pos: SquadSlot['position']; count: number }[] = [
-    { pos: 'GK', count: 1 },
-    { pos: 'DF', count: 4 },
-    { pos: 'MF', count: 3 },
-    { pos: 'FW', count: 3 },
-  ];
-  const slots: SquadSlot[] = [];
-  for (const { pos, count } of positions) {
-    for (let i = 0; i < count; i++) {
-      slots.push({ position: pos, slotIndex: i, player: null });
-    }
-  }
-  return slots;
+  return createSquadForFormation('4-3-3');
 }
 
 // ─── Initial Bench (8 players) ──────────────────────────────────────────────────
@@ -65,13 +81,17 @@ export default function HomePage() {
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<SquadSlot | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
 
   // Formation state
   const [formation, setFormation] = useState('4-3-3');
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [actionExecuting, setActionExecuting] = useState(false);
+  const [syncStage, setSyncStage] = useState<'signing' | 'broadcasting' | 'success' | 'error'>('signing');
+  const [syncTxHash, setSyncTxHash] = useState<string | undefined>();
+  const [syncError, setSyncError] = useState<string | undefined>();
 
   // Fetch squad lineup from SQLite database
   const fetchSquadLineup = useCallback((token: string) => {
@@ -84,11 +104,36 @@ export default function HomePage() {
         if (data.success) {
           setBudget(data.budget);
           setCctpUsed(data.cctpUsed);
-          if (data.squad && data.squad.length > 0) {
-            setSquad(data.squad);
+          const loadedFormation = data.formation || '4-3-3';
+          setFormation(loadedFormation);
+
+          if (data.squad) {
+            const savedSlots = new Map<string, Player | null>(
+              data.squad.map((slot: SquadSlot): [string, Player | null] => [
+                `${slot.position}-${slot.slotIndex}`,
+                slot.player,
+              ])
+            );
+            setSquad(
+              createSquadForFormation(loadedFormation).map((slot) => ({
+                ...slot,
+                player: savedSlots.get(`${slot.position}-${slot.slotIndex}`) ?? null,
+              }))
+            );
           }
-          if (data.bench && data.bench.length > 0) {
-            setBench(data.bench);
+          if (data.bench) {
+            const savedBench = new Map<string, Player | null>(
+              data.bench.map((slot: SquadSlot): [string, Player | null] => [
+                `${slot.position}-${slot.slotIndex}`,
+                slot.player,
+              ])
+            );
+            setBench(
+              createInitialBench().map((slot) => ({
+                ...slot,
+                player: savedBench.get(`${slot.position}-${slot.slotIndex}`) ?? null,
+              }))
+            );
           }
         }
       })
@@ -129,19 +174,28 @@ export default function HomePage() {
           setAuthLoading(false);
         });
     } else {
-      setAuthLoading(false);
+      // Defer the browser-only auth state transition until after the effect
+      // has subscribed to the storage/network checks above.
+      const timer = window.setTimeout(() => setAuthLoading(false), 0);
+      return () => window.clearTimeout(timer);
     }
   }, [fetchSquadLineup]);
 
   // ─── Derived ────────────────────────────────────────────────────────────
-  const squadPlayerIds = [
-    ...squad.filter((s) => s.player !== null).map((s) => s.player!.id),
-    ...bench.filter((s) => s.player !== null).map((s) => s.player!.id)
-  ];
+  const squadPlayerIds = useMemo(
+    () => [
+      ...squad.filter((s) => s.player !== null).map((s) => s.player!.id),
+      ...bench.filter((s) => s.player !== null).map((s) => s.player!.id),
+    ],
+    [squad, bench]
+  );
 
-  const currentSquadCost = 
-    squad.reduce((sum, s) => sum + (s.player?.price ?? 0), 0) +
-    bench.reduce((sum, s) => sum + (s.player?.price ?? 0), 0);
+  const currentSquadCost = useMemo(
+    () =>
+      squad.reduce((sum, s) => sum + (s.player?.price ?? 0), 0) +
+      bench.reduce((sum, s) => sum + (s.player?.price ?? 0), 0),
+    [squad, bench]
+  );
 
   const getFormationCounts = useCallback((form: string) => {
     if (form === '4-2-3-1') return { df: 4, mf: 5, fw: 1 };
@@ -199,7 +253,7 @@ export default function HomePage() {
       );
     } else {
       // Open selection modal
-      setSelectedSlot({ ...slot, isBench: false } as any);
+      setSelectedSlot({ ...slot, isBench: false });
       setModalOpen(true);
     }
   }, []);
@@ -215,7 +269,7 @@ export default function HomePage() {
         )
       );
     } else {
-      setSelectedSlot({ ...slot, isBench: true } as any);
+      setSelectedSlot({ ...slot, isBench: true });
       setModalOpen(true);
     }
   }, []);
@@ -224,7 +278,7 @@ export default function HomePage() {
   const handleSelectPlayer = useCallback(
     (player: Player) => {
       if (!selectedSlot) return;
-      const isBench = (selectedSlot as any).isBench;
+      const { isBench } = selectedSlot;
       
       if (isBench) {
         setBench((prev) =>
@@ -255,21 +309,20 @@ export default function HomePage() {
   const handleCCTP = useCallback(async () => {
     setCctpLoading(true);
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/cctp`, {
+      const data = await apiFetch<{
+        success: boolean;
+        newBudgetBonus: number;
+        txHash: string;
+        message: string;
+        simulated: boolean;
+      }>('/api/cctp', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
         body: JSON.stringify({
           walletAddress: 'inj1x8dq7f3k9v2m4n5p6r7s8t9u0w1x2y3z4k4m2',
           amount: 20,
           sourceChain: 'Ethereum',
         }),
       });
-      const data = await res.json();
       if (data.success) {
         setBudget((prev) => prev + data.newBudgetBonus);
         setCctpUsed(true);
@@ -279,12 +332,16 @@ export default function HomePage() {
           {
             id: `msg-${Date.now()}`,
             role: 'assistant',
-            content: `⛓️ **CCTP Bridge Başarılı!**\n\n${data.message}\n\nTx Hash: \`${data.txHash}\`\n\nOyun bütçeniz artık **${budget + data.newBudgetBonus}M**.`,
+            content: `⛓️ **CCTP Bridge Başarılı!**\n\n${data.message}\n\nTx Hash: \`${data.txHash}\`\n\nOyun bütçeniz artık **${budget + data.newBudgetBonus}M**.${data.simulated ? '\n\n_Not: Bu işlem demo modunda simüle edildi._' : ''}`,
           },
         ]);
       }
     } catch (err) {
-      console.error('CCTP error:', err);
+      const message = err instanceof Error ? err.message : 'CCTP bridge failed.';
+      setMessages((prev) => [
+        ...prev,
+        { id: `msg-${Date.now()}-cctp-error`, role: 'assistant', content: `❌ CCTP işlemi başarısız: ${message}` },
+      ]);
     } finally {
       setCctpLoading(false);
     }
@@ -302,26 +359,21 @@ export default function HomePage() {
       };
       setMessages((prev) => [...prev, userMsg]);
       setAgentLoading(true);
-      if (isPremium) {
-        setIsPremiumUnlocked(true);
-      }
 
       try {
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${API_URL}/api/agent`, {
+        const data = await apiFetch<{
+          message: string;
+          suggestedAction?: SuggestedAction;
+          isPremium: boolean;
+          paymentVerified?: boolean;
+        }>('/api/agent', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
           body: JSON.stringify({
             prompt,
             hasPaidX402: isPremium,
             squadPlayerIds,
           }),
         });
-        const data = await res.json();
         
         const assistantMsg: ChatMessage = {
           id: `msg-${Date.now()}-resp`,
@@ -332,18 +384,21 @@ export default function HomePage() {
           actionApplied: false,
         };
         
+        if (data.isPremium) {
+          setIsPremiumUnlocked(true);
+        }
         setMessages((prev) => [...prev, assistantMsg]);
         if (isPremium && data.suggestedAction) {
           setPendingAction(data.suggestedAction);
         }
       } catch (err) {
-        console.error('Agent error:', err);
+        const message = err instanceof Error ? err.message : 'Bilinmeyen bir hata.';
         setMessages((prev) => [
           ...prev,
           {
             id: `msg-${Date.now()}-err`,
             role: 'assistant',
-            content: '❌ Bir hata oluştu. Lütfen tekrar deneyin.',
+            content: `❌ AI danışmanı yanıt veremedi: ${message}`,
           },
         ]);
       } finally {
@@ -358,7 +413,6 @@ export default function HomePage() {
   const handleTabClick = useCallback((tab: string) => {
     if (tab === 'Analytics') {
       setActiveTab('AI Consultant');
-      setIsPremiumUnlocked(true);
       // Add a system notice to chat
       setMessages((prev) => [
         ...prev,
@@ -397,13 +451,12 @@ export default function HomePage() {
 
   // Premium Unlock Handler
   const handleUnlockPremium = useCallback(() => {
-    setIsPremiumUnlocked(true);
     setMessages((prev) => [
       ...prev,
       {
         id: `msg-premium-unlock-tooltip-${Date.now()}`,
         role: 'assistant',
-        content: `🔮 **Deep Tactical Analytics Unlocked globally!**\n\nAll player tooltips, scout notes, injury risk levels, and expected goals (xG) metrics are now fully visible on the field.`,
+          content: `🔮 **Deep Tactical Analytics requested.**\n\nThe AI is verifying your x402 access before revealing premium scouting data.`,
         isPremium: true,
       },
     ]);
@@ -412,32 +465,38 @@ export default function HomePage() {
 
 
 
-    // Execute changes sync handler
-    const handleExecuteChanges = useCallback(async () => {
-      setIsSyncing(true);
+  // Persist the current tactical snapshot. The backend recalculates cost and
+  // verifies player IDs, so this is safe even if the browser is tampered with.
+  const saveSquadSnapshot = useCallback(async () => {
+    return apiFetch<{ success: boolean; message: string }>('/api/squad/save', {
+      method: 'POST',
+      body: JSON.stringify({ budget, cctpUsed, formation, squad, bench }),
+    });
+  }, [budget, cctpUsed, formation, squad, bench]);
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const token = localStorage.getItem('token');
-      if (!token) return;
+  // Execute changes sync handler
+  const handleExecuteChanges = useCallback(async () => {
+    setIsSyncing(true);
+    setSyncStage('signing');
+    setSyncTxHash(undefined);
+    setSyncError(undefined);
 
-      try {
-        await fetch(`${API_URL}/api/squad/save`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            budget,
-            cctpUsed,
-            squad,
-            bench
-          })
-        });
-      } catch (err) {
-        console.error('Failed to save squad state in database:', err);
-      }
-    }, [budget, cctpUsed, squad, bench]);
+    if (!localStorage.getItem('token')) {
+      setSyncStage('error');
+      setSyncError('Oturum bulunamadı. Lütfen tekrar giriş yapın.');
+      return;
+    }
+
+    try {
+      setSyncStage('broadcasting');
+      await saveSquadSnapshot();
+      setSyncStage('success');
+      setSyncTxHash(`inj_squad_sync_${Date.now().toString(16)}`);
+    } catch (err) {
+      setSyncStage('error');
+      setSyncError(err instanceof Error ? err.message : 'Kadronuz kaydedilemedi.');
+    }
+  }, [saveSquadSnapshot]);
 
   // Authentication Callbacks
   const handleLoginSuccess = useCallback((username: string, token: string) => {
@@ -453,50 +512,67 @@ export default function HomePage() {
     setCurrentUser(null);
   }, []);
 
-  // Approve MCP action
+  // Approve MCP action. Save first so the server validates the same snapshot
+  // the AI analysed, then execute and display the returned MCP receipt.
   const handleApproveAction = useCallback(
-    (action: SuggestedAction) => {
+    async (action: SuggestedAction) => {
       const sellPlayer = players.find((p) => p.id === action.sellPlayerId);
       const buyPlayer = players.find((p) => p.id === action.buyPlayerId);
       if (!sellPlayer || !buyPlayer) return;
 
-      // Execute the transfer on the squad
-      setSquad((prev) =>
-        prev.map((slot) => {
-          if (slot.player?.id === action.sellPlayerId) {
-            return { ...slot, player: buyPlayer };
-          }
-          return slot;
-        })
-      );
+      setActionExecuting(true);
+      try {
+        await saveSquadSnapshot();
+        const receipt = await apiFetch<TransferReceipt>('/api/transfers/execute', {
+          method: 'POST',
+          body: JSON.stringify({
+            sellPlayerId: action.sellPlayerId,
+            buyPlayerId: action.buyPlayerId,
+            reasoning: action.reasoning,
+            squadPlayerIds,
+          }),
+        });
 
-      // Mark the action as applied
-      const updatedMessages = messages.map(msg => {
-        if (msg.role === 'assistant' && pendingAction) {
-          return { ...msg, actionApplied: true };
-        }
-        return msg;
-      });
-      setMessages(updatedMessages);
-      setPendingAction(null);
-
-      // Add confirmation message
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg-${Date.now()}-mcp`,
-          role: 'assistant',
-          content:
-            `🔗 **MCP Transfer Onaylandı (On-Chain)**\n\n` +
-            `❌ Satıldı: **${sellPlayer.name}** (${sellPlayer.price}M)\n` +
-            `✅ Alındı: **${buyPlayer.name}** (${buyPlayer.price}M)\n\n` +
-            `Transfer Injective zincirinde simüle edildi.\n` +
-            `Tx: \`inj_mcp_swap_${Date.now()}\`\n\n` +
-            `Kadronuz güncellendi, gaffer! ⚽`,
-        },
-      ]);
+        setSquad((prev) =>
+          prev.map((slot) =>
+            slot.player?.id === action.sellPlayerId ? { ...slot, player: buyPlayer } : slot
+          )
+        );
+        setBench((prev) =>
+          prev.map((slot) =>
+            slot.player?.id === action.sellPlayerId ? { ...slot, player: buyPlayer } : slot
+          )
+        );
+        setMessages((prev) => [
+          ...prev.map((msg) =>
+            msg.suggestedAction?.sellPlayerId === action.sellPlayerId &&
+            msg.suggestedAction?.buyPlayerId === action.buyPlayerId
+              ? { ...msg, actionApplied: true }
+              : msg
+          ),
+          {
+            id: `msg-${Date.now()}-mcp`,
+            role: 'assistant',
+            content:
+              `🔗 **MCP Transfer Onaylandı**\n\n` +
+              `❌ Satıldı: **${sellPlayer.name}** (${sellPlayer.price}M)\n` +
+              `✅ Alındı: **${buyPlayer.name}** (${buyPlayer.price}M)\n\n` +
+              `${receipt.message}\n` +
+              `Receipt: \`${receipt.txHash}\`${receipt.simulated ? '\n\n_Not: MCP işlemi demo transportunda simüle edildi._' : ''}`,
+          },
+        ]);
+        setPendingAction(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Transfer gerçekleştirilemedi.';
+        setMessages((prev) => [
+          ...prev,
+          { id: `msg-${Date.now()}-mcp-error`, role: 'assistant', content: `❌ Transfer reddedildi: ${message}` },
+        ]);
+      } finally {
+        setActionExecuting(false);
+      }
     },
-    [players, messages, pendingAction]
+    [players, saveSquadSnapshot, squadPlayerIds]
   );
 
   // ─── Render ─────────────────────────────────────────────────────────────
@@ -554,6 +630,7 @@ export default function HomePage() {
               onSendMessage={handleAgentChat}
               onApproveAction={handleApproveAction}
               isLoading={agentLoading}
+              actionLoading={actionExecuting}
               pendingAction={pendingAction}
               sellPlayer={pendingAction ? players.find(p => p.id === pendingAction.sellPlayerId) || null : null}
               buyPlayer={pendingAction ? players.find(p => p.id === pendingAction.buyPlayerId) || null : null}
@@ -594,7 +671,10 @@ export default function HomePage() {
       {/* Execute Sync Modal */}
       <ExecuteSyncModal 
         isOpen={isSyncing} 
-        onClose={() => setIsSyncing(false)} 
+        stage={syncStage}
+        txHash={syncTxHash}
+        error={syncError}
+        onClose={() => setIsSyncing(false)}
       />
     </div>
   );

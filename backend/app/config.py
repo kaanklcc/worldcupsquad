@@ -7,6 +7,11 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Gemini LLM
     gemini_api_key: str = ""
+    # Stable function-calling model. Override with GEMINI_MODEL when needed.
+    gemini_model: str = "gemini-3.5-flash"
+
+    # Authentication. Override this in any shared or production environment.
+    jwt_secret_key: str = "auto-gaffer-local-development-secret"
 
     # Injective
     injective_mnemonic: str = ""
@@ -14,6 +19,11 @@ class Settings(BaseSettings):
 
     # x402
     x402_facilitator_url: str = "https://facilitator.x402.co/verify"
+    x402_demo_mode: bool = True
+
+    # Use the real stdio MCP transport by default; simulation remains available
+    # for offline demos or when a judge only runs the FastAPI process.
+    mcp_simulation: bool = False
 
     # CCTP
     cctp_source_domain: int = 0  # Ethereum

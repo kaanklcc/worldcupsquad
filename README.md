@@ -1,180 +1,121 @@
 # Auto-Gaffer
 
-**World Cup 2026 Fantasy Football Manager** — built for the Injective Global Cup Hackathon.
+Auto-Gaffer is a World Cup 2026 fantasy football command centre built for the Injective Global Cup Hackathon. A fan builds a squad with a USDC-denominated budget, asks Gemini for tactical help, and approves structured transfer actions through an MCP tool.
 
-Auto-Gaffer is an AI-powered fantasy football management dashboard where you act as the "gaffer" (manager): build your squad within a USDC budget, consult an AI tactical assistant for data-driven transfer recommendations, bridge USDC cross-chain via CCTP, and execute on-chain transfers via MCP.
+The product solves a simple fan problem: World Cup fantasy decisions are spread across player stats, tactical context, and funding actions. Auto-Gaffer brings those decisions into one explainable workflow.
 
----
+## What the demo does
 
-## What It Does
+- Build a squad on an interactive pitch with 4-3-3, 4-2-3-1, 3-5-2, 4-4-2, and 5-3-2 formations.
+- Search 28 curated World Cup players by position, price, availability, and points.
+- Ask a Gemini-powered tactical assistant to search players, rank positions, analyse the squad, validate the budget, and (with premium access) suggest a transfer.
+- Gate deep scouting data and executable transfer recommendations behind x402 verification.
+- Bridge a one-time 20 USDC budget boost through the CCTP flow. Local development uses a clearly labelled simulation until wallet signing is configured.
+- Approve a transfer through the backend MCP client. The default transport starts the standalone MCP server over stdio and returns a structured receipt.
+- Persist a validated squad to SQLite, with server-side catalog, position, duplicate, availability, and budget checks.
 
-- **Build your squad** on an interactive pitch with 4-3-3, 4-2-3-1, 3-5-2, 4-4-2, and 5-3-2 formations
-- **Consult an AI assistant** (Gemini-powered) that analyzes your squad, ranks players by position, and recommends transfers with reasoning
-- **Unlock premium analytics** via x402 payment — deep scouting reports with xG data, injury risk, and one-click transfer actions
-- **Bridge 20 USDC** from Ethereum to Injective via CCTP to expand your budget from 100M to 120M
-- **Execute transfers on-chain** via the MCP server — every swap is processed through Model Context Protocol tools
+## Hackathon technology mapping
 
----
+| Injective technology | How Auto-Gaffer uses it | Current demo status |
+| --- | --- | --- |
+| x402 | Premium agent access accepts `X-Payment` / `X-Payment-Receipt` and verifies them through a configurable facilitator. | `X402_DEMO_MODE=true` allows a walletless local demo; disable it for a real facilitator. |
+| USDC CCTP | The backing flow models source burn → Circle attestation → destination mint and increases the Injective budget by 20 USDC. | The current local flow returns a labelled deterministic simulation; production wallet signing is the next integration step. |
+| MCP Server | `backend/app/mcp/server.py` exposes `get_squad`, `apply_transfer`, `set_formation`, and `get_player_details`. The transfer API calls the server through MCP stdio by default. | Real MCP stdio is enabled by default. Set `MCP_SIMULATION=true` for an offline fallback. |
+| Agent Skills | Gemini function calling exposes player search, rankings, squad analysis, budget validation, transfer suggestions, and premium reports. | Gemini uses `GEMINI_MODEL`; a rule-based fallback remains available without a key. |
+
+Injective is the destination-chain and wallet context for the product. The current repo demonstrates the application workflow and protocol boundaries; live Injective transaction signing and live match data are explicit follow-up integrations rather than hidden simulations.
 
 ## Architecture
 
-```
-worldcupsquad/
-├── app/                    # Next.js 16 frontend (React 19, Tailwind 4)
-│   ├── page.tsx            # Main dashboard (pitch, chat, sidebar)
-│   └── api/                # Legacy TS route handlers (kept as fallback)
-├── components/             # UI components (Pitch, ChatPanel, Header, etc.)
-├── data/                   # Shared player database (28 World Cup players)
-├── types/                  # TypeScript type definitions
-└── backend/                # Python FastAPI backend (port 8000)
-    └── app/
-        ├── routers/        # API endpoints (/api/players, /agent, /cctp, /transfers)
-        ├── agent/          # Gemini LLM + function-calling Agent Skills
-        ├── mcp/            # MCP server + client for squad tools
-        ├── x402.py         # x402 payment verification
-        ├── cctp_flow.py    # CCTP burn-attest-mint flow
-        └── models.py       # Pydantic models
+```text
+Next.js 16 / React 19 UI
+  ├─ pitch, squad selection, chat, auth, receipts
+  └─ lib/api.ts → authenticated requests
+
+FastAPI backend
+  ├─ routers/          auth, players, agent, squad, transfers, CCTP
+  ├─ agent/            Gemini client + Agent Skills + fallback logic
+  ├─ mcp/              standalone MCP server + stdio client
+  ├─ x402.py           payment verification boundary
+  ├─ cctp_flow.py      CCTP burn/attest/mint adapter boundary
+  └─ data.py / db.py   shared player catalog + SQLite persistence
 ```
 
-### Tech Stack
+## Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 16, React 19, Tailwind CSS 4 |
-| Backend | Python, FastAPI, Pydantic |
-| AI Agent | Google Gemini 2.5 Flash with function calling |
-| Payments | x402 (HTTP 402 Payment Required) |
-| Bridging | CCTP (Circle Cross-Chain Transfer Protocol) |
-| Agent Tools | MCP (Model Context Protocol) |
+- Frontend: Next.js 16.2, React 19, Tailwind CSS 4
+- Backend: Python 3.10+, FastAPI, Pydantic, SQLite
+- AI: Google Gemini API with function calling
+- Protocols: x402, Circle CCTP, Model Context Protocol
 
----
+## Run locally
 
-## Injective Technologies Used
-
-### 1. x402 — Payment Required Protocol
-
-**Where:** `backend/app/x402.py`, `backend/app/routers/agent.py`
-
-The premium tier (deep scouting reports, xG data, injury risk analysis, AI transfer suggestions) is gated behind x402 payment verification. When a user clicks "Unlock Deep Tactical Analytics", the backend verifies the x402 payment receipt before granting access to premium agent skills.
-
-- Free tier: basic player info, position rankings, general advice
-- Premium tier (x402): xG/game, injury risk, scout notes, executable transfer suggestions
-- The `X-Payment` header is verified against a facilitator; demo mode trusts the `hasPaidX402` flag
-
-### 2. USDC CCTP — Cross-Chain Transfer Protocol
-
-**Where:** `backend/app/cctp_flow.py`, `backend/app/routers/cctp.py`
-
-Users can bridge 20 USDC from Ethereum to Injective using Circle's CCTP protocol. This expands their squad budget from 100M to 120M USDC. The backend implements the burn → attest → mint flow:
-
-- Burns USDC on the source domain (Ethereum)
-- Fetches attestation from Circle's Iris API
-- Mints USDC on the destination domain (Injective)
-- Returns a transaction hash for verification
-- Falls back to a clearly-labeled realistic simulation when no wallet keys are configured
-
-### 3. MCP Server — Model Context Protocol
-
-**Where:** `backend/app/mcp/server.py`, `backend/app/mcp/client.py`, `backend/app/routers/transfers.py`
-
-A standalone MCP server exposes squad management tools that the backend calls to execute transfers. This replaces simulated client-side swaps with real MCP-roundtripped actions:
-
-- `apply_transfer` — Execute a player swap (sell X → buy Y)
-- `get_squad` — Retrieve current squad state
-- `set_formation` — Change formation
-- `get_player_details` — Get detailed player info
-
-Every transfer returns an MCP receipt with a transaction hash, timestamp, and structured data.
-
-### 4. Agent Skills — Function-Calling Tools
-
-**Where:** `backend/app/agent/skills.py`, `backend/app/agent/gemini_client.py`
-
-The AI consultant is powered by Google Gemini 2.5 Flash with native function calling. Six "Agent Skills" are registered as tools the LLM can invoke autonomously:
-
-| Skill | Description |
-|-------|-------------|
-| `search_player` | Find a player by name/surname with accent-insensitive matching |
-| `rank_position` | Get top players at a position sorted by points |
-| `analyze_squad` | Calculate total points, budget, xG average, injury risks |
-| `suggest_transfer` | AI-powered sell/buy recommendation with reasoning |
-| `validate_budget` | Check if squad fits within budget |
-| `get_player_report` | Premium scouting report with xG, alternatives, positional rank |
-
-The agent decides which skills to call based on the user's question. Falls back to rule-based logic if no `GEMINI_API_KEY` is configured.
-
----
-
-## Is Injective Integrated?
-
-**Yes.** The project is built around Injective's ecosystem:
-
-- The wallet system uses Injective addresses (`inj1...`)
-- CCTP bridges USDC **to Injective** as the destination chain
-- On-chain transfers are simulated on the Injective chain (testnet-ready via `injective-py`)
-- The entire budget economy is denominated in USDC on Injective
-
-For full production on-chain integration, set `INJECTIVE_MNEMONIC` in the backend `.env` to enable real wallet signing on Injective testnet.
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+ (frontend)
-- Python 3.10+ (backend)
-- Google Gemini API key (optional — falls back to rule-based agent)
-
-### 1. Start the Python Backend
+### Backend
 
 ```bash
 cd backend
 pip install -r requirements.txt
-cp .env.example .env   # Add your GEMINI_API_KEY (optional)
+cp .env.example .env
+# Add GEMINI_API_KEY when Gemini responses are required.
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API docs available at http://localhost:8000/docs
+On Windows PowerShell, `Copy-Item .env.example .env` is equivalent to `cp`.
 
-### 2. Start the Next.js Frontend
+Important local settings:
+
+```env
+GEMINI_MODEL=gemini-3.5-flash
+X402_DEMO_MODE=true
+MCP_SIMULATION=false
+```
+
+`MCP_SIMULATION=false` starts `app.mcp.server` as a child process and calls it through the MCP stdio protocol. Use `true` only when running an offline presentation or when the child process cannot be started.
+
+### Frontend
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000
+Open http://localhost:3000. The frontend expects the backend at `http://localhost:8000`; set `NEXT_PUBLIC_API_URL` in `.env.local` to change it.
 
-### 3. How Users Interact
+## Demo walkthrough
 
-1. The dashboard loads 28 World Cup players from the backend
-2. Click empty slots on the pitch to add players within your 100M budget
-3. Chat with the AI assistant (free) or unlock Premium (x402) for deep analytics
-4. The AI suggests transfers — click "Confirm Tactical Change" to execute via MCP
-5. Click "Acquire Backing" to bridge 20 USDC via CCTP and expand your budget
-6. Click "Execute Changes" to sync your squad on-chain
+1. Register a manager and log in.
+2. Add available players to the pitch. The backend re-validates the catalog and budget when saving.
+3. Ask the AI about a player, a position, or the squad.
+4. Request Deep Tactical Analytics. In local demo mode, x402 is represented by the explicit `X402_DEMO_MODE` switch.
+5. Review the proposed sell/buy action and click **Confirm Tactical Change**.
+6. Watch the MCP receipt. It is marked as simulated only when the configured transport is simulated.
+7. Use **Acquire Backing** once to run the CCTP flow and expand the budget by 20M.
+8. Use **Execute Changes** to persist the final squad snapshot.
 
----
+## API
 
-## API Endpoints
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/auth/register` | Create a manager |
+| `POST` | `/api/auth/login` | Get a JWT session |
+| `GET` | `/api/players` | Load the World Cup player catalog |
+| `POST` | `/api/agent` | Chat with Gemini / fallback agent |
+| `GET` | `/api/squad/load` | Load the authenticated squad |
+| `POST` | `/api/squad/save` | Validate and persist a squad snapshot |
+| `POST` | `/api/transfers/execute` | Validate and execute an MCP transfer |
+| `POST` | `/api/cctp` | Run the one-time CCTP backing flow |
+| `GET` | `/docs` | OpenAPI / Swagger documentation |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/players` | Get all 28 World Cup players |
-| POST | `/api/agent` | Chat with AI consultant (free + premium via x402) |
-| POST | `/api/cctp` | Bridge USDC via CCTP |
-| POST | `/api/transfers/execute` | Execute transfer via MCP |
-| GET | `/docs` | Interactive API documentation |
+## Verification
 
----
+```bash
+npm run lint
+npm run build
 
-## Project Structure
+cd backend
+python -m compileall -q app
+```
 
-- **Frontend:** `app/`, `components/`, `types/` — Next.js dashboard
-- **Backend:** `backend/app/` — FastAPI server with Gemini, x402, CCTP, MCP
-- **Shared Data:** `data/worldcup_players.json` — 28 players with stats and premium analytics
+The repository intentionally labels simulated CCTP/MCP paths in API responses and the UI. This keeps the hackathon demo usable while making the boundary to live wallet, attestation, and matchday data integrations clear.
 
----
-
-Built for the **Injective Global Cup Hackathon 2026** ⚽
+Built for the **Injective Global Cup Hackathon 2026**.

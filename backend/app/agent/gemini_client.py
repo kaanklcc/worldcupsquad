@@ -3,6 +3,7 @@ Gemini LLM client with function-calling support for the Auto-Gaffer agent.
 Includes fallback to rule-based logic when no API key is configured.
 """
 import json
+import asyncio
 from typing import List, Optional
 
 from google import genai
@@ -19,7 +20,7 @@ class GeminiAgentClient:
 
     def __init__(self):
         self.client = None
-        self.model = "gemini-2.0-flash"
+        self.model = settings.gemini_model
 
         if settings.gemini_api_key:
             self.client = genai.Client(api_key=settings.gemini_api_key)
@@ -130,7 +131,8 @@ class GeminiAgentClient:
 
             tools = self._build_tools(squad_player_ids, is_premium)
 
-            response = self.client.models.generate_content(
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
                 model=self.model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -273,8 +275,18 @@ class GeminiAgentClient:
                 msg += "\n💡 *Scout notes and xG available for Premium.*"
             return AgentResponse(message=msg, isPremium=is_premium)
 
-        # Transfer suggestion
+        # Transfer suggestion is a premium action. Free users can ask for an
+        # upgrade path, but must never receive an executable recommendation.
         if any(kw in prompt_lower for kw in ['transfer', 'swap', 'replace', 'upgrade', 'improve', 'suggest', 'recommend']):
+            if not is_premium:
+                return AgentResponse(
+                    message=(
+                        "I can prepare an executable transfer recommendation after you unlock "
+                        "Deep Tactical Analytics with x402."
+                    ),
+                    isPremium=False
+                )
+
             transfer = skills.suggest_transfer(squad_player_ids)
             if 'sell_player' in transfer:
                 suggested_action = SuggestedAction(

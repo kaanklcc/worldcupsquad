@@ -4,6 +4,11 @@ Used by the transfers router to execute transfers via MCP.
 """
 from typing import Dict, Any, Optional
 import json
+import sys
+from pathlib import Path
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 
 class MCPClient:
@@ -33,9 +38,34 @@ class MCPClient:
         if self.use_simulation:
             return await self._simulate_tool_call(tool_name, arguments)
 
-        # In a real implementation, this would connect to the MCP server via stdio/HTTP
-        # and execute the actual tool call
-        return await self._simulate_tool_call(tool_name, arguments)
+        if not self.server_command:
+            return {"success": False, "error": "MCP server command is not configured"}
+
+        command, *args = self.server_command
+        server_params = StdioServerParameters(
+            command=command,
+            args=args,
+            cwd=str(Path(__file__).resolve().parents[2]),
+        )
+
+        try:
+            async with stdio_client(server_params) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    result = await session.call_tool(tool_name, arguments)
+
+            for content in result.content:
+                if getattr(content, "type", None) == "text":
+                    parsed = json.loads(content.text)
+                    if isinstance(parsed, dict):
+                        parsed.setdefault("simulated", False)
+                        parsed.setdefault("mcp_version", "1.0.0")
+                        parsed.setdefault("server", "auto-gaffer-mcp")
+                        return parsed
+
+            return {"success": False, "error": "MCP server returned no JSON content"}
+        except Exception as exc:
+            return {"success": False, "error": f"MCP stdio call failed: {exc}"}
 
     async def _simulate_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -60,7 +90,9 @@ class MCPClient:
                 return {
                     "success": False,
                     "error": "Player not found",
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "simulated": True,
+                    "server": "auto-gaffer-mcp"
                 }
 
             # Generate realistic MCP receipt
@@ -74,7 +106,8 @@ class MCPClient:
                 "reasoning": reasoning,
                 "timestamp": time.time(),
                 "mcp_version": "1.0.0",
-                "server": "auto-gaffer-mcp"
+                "server": "auto-gaffer-mcp",
+                "simulated": True
             }
 
         elif tool_name == "get_squad":
@@ -121,5 +154,10 @@ def get_mcp_client() -> MCPClient:
     """Get or create the singleton MCP client."""
     global _mcp_client
     if _mcp_client is None:
-        _mcp_client = MCPClient()
+        from ..config import settings
+
+        command = None
+        if not settings.mcp_simulation:
+            command = [sys.executable, "-m", "app.mcp.server"]
+        _mcp_client = MCPClient(command)
     return _mcp_client

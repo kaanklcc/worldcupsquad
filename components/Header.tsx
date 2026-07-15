@@ -1,7 +1,5 @@
 'use client';
 
-import { Player, SquadSlot, ChatMessage, SuggestedAction } from '@/types';
-
 interface HeaderProps {
   budget: number;
   maxBudget: number;

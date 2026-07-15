@@ -7,10 +7,11 @@ import datetime
 from typing import Optional
 
 from ..db import get_db_connection
+from ..config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-SECRET_KEY = "auto-gaffer-super-secret-key-2026"
+SECRET_KEY = settings.jwt_secret_key
 ALGORITHM = "HS256"
 
 # ─── Pydantic Schemas ──────────────────────────────────────────────────────────
@@ -59,7 +60,7 @@ def create_token(user_id: int, username: str) -> str:
     payload = {
         "user_id": user_id,
         "username": username,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=3)
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -67,7 +68,9 @@ def decode_token(token: str) -> dict:
     """Decode and validate JWT access token."""
     try:
         if token.startswith("Bearer "):
-            token = token.split(" ")[1]
+            token = token.removeprefix("Bearer ").strip()
+        if not token:
+            raise jwt.InvalidTokenError("Empty token")
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
@@ -166,7 +169,7 @@ async def login(user: UserLogin):
     
     # Fetch user by username or email
     cursor.execute(
-        "SELECT id, username, password_hash FROM users WHERE username = ? OR email = ?",
+        "SELECT id, username, password_hash FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)",
         (user.username_or_email, user.username_or_email)
     )
     row = cursor.fetchone()
@@ -192,7 +195,7 @@ async def forgot_password_question(req: ForgotPasswordRequest):
     cursor = conn.cursor()
     
     cursor.execute(
-        "SELECT security_question FROM users WHERE username = ? OR email = ?",
+        "SELECT security_question FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)",
         (req.username_or_email, req.username_or_email)
     )
     row = cursor.fetchone()
@@ -213,7 +216,7 @@ async def reset_password(req: ResetPasswordRequest):
     
     # Fetch security answer and ID
     cursor.execute(
-        "SELECT id, security_answer_hash FROM users WHERE username = ? OR email = ?",
+        "SELECT id, security_answer_hash FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)",
         (req.username_or_email, req.username_or_email)
     )
     row = cursor.fetchone()
@@ -234,6 +237,12 @@ async def reset_password(req: ResetPasswordRequest):
         )
         
     # Hash new password
+    if not validate_password_strength(req.new_password):
+        conn.close()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must contain at least 6 characters, one uppercase letter, one lowercase letter, and one number."
+        )
     new_pw_hash = hash_password(req.new_password)
     
     # Update password

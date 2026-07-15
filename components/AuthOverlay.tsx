@@ -15,6 +15,10 @@ const SECURITY_QUESTIONS = [
   "İlk okul öğretmeninizin soyadı nedir?"
 ];
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
   const [mode, setMode] = useState<AuthMode>('login');
   
@@ -68,8 +72,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       }
       
       onLoginSuccess(data.username, data.token);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Sunucuya bağlanılamadı.');
+    } catch (err: unknown) {
+      setErrorMsg(getErrorMessage(err, 'Sunucuya bağlanılamadı.'));
     } finally {
       setLoading(false);
     }
@@ -106,8 +110,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       setMode('login');
       setPassword('');
       setSecurityAnswer('');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Kayıt sırasında bir hata oluştu.');
+    } catch (err: unknown) {
+      setErrorMsg(getErrorMessage(err, 'Kayıt sırasında bir hata oluştu.'));
     } finally {
       setLoading(false);
     }
@@ -136,8 +140,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       
       setFetchedQuestion(data.security_question);
       setMode('forgot_step2');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Bir hata oluştu.');
+    } catch (err: unknown) {
+      setErrorMsg(getErrorMessage(err, 'Bir hata oluştu.'));
     } finally {
       setLoading(false);
     }
@@ -174,8 +178,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       setPassword('');
       setResetAnswer('');
       setNewPassword('');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Şifre sıfırlanamadı.');
+    } catch (err: unknown) {
+      setErrorMsg(getErrorMessage(err, 'Şifre sıfırlanamadı.'));
     } finally {
       setLoading(false);
     }

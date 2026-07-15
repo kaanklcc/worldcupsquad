@@ -93,8 +93,11 @@ class X402Verifier:
         Returns:
             True if premium access is verified, False otherwise
         """
-        # If facilitator is not configured (local dev/demo), trust the client's claim
-        if not self.facilitator_url or self.facilitator_url == "https://facilitator.x402.co/verify":
+        # Local demo mode is explicit and can be disabled in shared deployments.
+        if settings.x402_demo_mode and (
+            not self.facilitator_url
+            or self.facilitator_url == "https://facilitator.x402.co/verify"
+        ):
             if has_paid_x402:
                 return True
             return False

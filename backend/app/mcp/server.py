@@ -3,7 +3,9 @@ MCP (Model Context Protocol) server for Auto-Gaffer squad tools.
 Exposes squad management tools that can be called via the MCP protocol.
 """
 from mcp.server import Server
+from mcp.server.stdio import stdio_server
 from mcp.server.models import InitializationOptions
+from mcp.server.lowlevel.server import NotificationOptions
 from mcp.types import (
     Tool,
     TextContent,
@@ -211,7 +213,7 @@ class AutoGafferMCPServer:
 
     async def run(self):
         """Run the MCP server."""
-        async with self.server.stdio_transport() as (read_stream, write_stream):
+        async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
                 read_stream,
                 write_stream,
@@ -219,7 +221,7 @@ class AutoGafferMCPServer:
                     server_name="auto-gaffer-mcp",
                     server_version="1.0.0",
                     capabilities=self.server.get_capabilities(
-                        notification_options=None,
+                        notification_options=NotificationOptions(),
                         experimental_capabilities={}
                     )
                 )

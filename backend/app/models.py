@@ -4,6 +4,8 @@ Pydantic models matching the frontend types/index.ts.
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 
+Formation = Literal['4-3-3', '4-4-2', '3-5-2', '4-2-3-1', '5-3-2']
+
 
 class PremiumStats(BaseModel):
     xg_per_game: float
@@ -50,7 +52,7 @@ class AgentResponse(BaseModel):
 class AgentRequest(BaseModel):
     prompt: str
     hasPaidX402: bool = False
-    squadPlayerIds: List[str] = []
+    squadPlayerIds: List[str] = Field(default_factory=list, max_length=19)
 
 
 class ChatMessage(BaseModel):
@@ -79,8 +81,8 @@ class CCTPResponse(BaseModel):
 class TransferExecuteRequest(BaseModel):
     sellPlayerId: str
     buyPlayerId: str
-    reasoning: str
-    squadPlayerIds: List[str]
+    reasoning: str = Field(..., min_length=1, max_length=1000)
+    squadPlayerIds: List[str] = Field(..., min_length=1, max_length=19)
 
 
 class TransferExecuteResponse(BaseModel):
@@ -88,3 +90,4 @@ class TransferExecuteResponse(BaseModel):
     txHash: str
     message: str
     mcpReceipt: Optional[dict] = None
+    simulated: bool = False

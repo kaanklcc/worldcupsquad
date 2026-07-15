@@ -6,6 +6,7 @@ interface ChatPanelProps {
   onSendMessage: (prompt: string, isPremium: boolean) => void;
   onApproveAction: (action: SuggestedAction) => void;
   isLoading: boolean;
+  actionLoading: boolean;
   pendingAction: SuggestedAction | null;
   sellPlayer: Player | null;
   buyPlayer: Player | null;
@@ -16,6 +17,7 @@ export default function ChatPanel({
   onSendMessage,
   onApproveAction,
   isLoading,
+  actionLoading,
   pendingAction,
   sellPlayer,
   buyPlayer,
@@ -166,10 +168,11 @@ export default function ChatPanel({
 
             <button
               onClick={() => onApproveAction(pendingAction)}
-              className="w-full emerald-gradient font-display-lg text-body-md uppercase text-on-primary py-3 rounded-sm shadow-lg hover:brightness-110 transition-all flex items-center justify-center gap-2"
+              disabled={actionLoading}
+              className="w-full emerald-gradient font-display-lg text-body-md uppercase text-on-primary py-3 rounded-sm shadow-lg hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait"
             >
-              <span className="material-symbols-outlined">check_circle</span>
-              CONFIRM TACTICAL CHANGE
+              <span className="material-symbols-outlined">{actionLoading ? 'sync' : 'check_circle'}</span>
+              {actionLoading ? 'EXECUTING VIA MCP...' : 'CONFIRM TACTICAL CHANGE'}
             </button>
           </div>
         )}

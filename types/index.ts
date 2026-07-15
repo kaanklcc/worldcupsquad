@@ -34,6 +34,15 @@ export interface AgentResponse {
   message: string;
   suggestedAction?: SuggestedAction;
   isPremium: boolean;
+  paymentVerified?: boolean;
+}
+
+export interface TransferReceipt {
+  success: boolean;
+  txHash: string;
+  message: string;
+  mcpReceipt?: Record<string, unknown>;
+  simulated: boolean;
 }
 
 export interface ChatMessage {

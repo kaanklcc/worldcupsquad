@@ -63,7 +63,9 @@ async def chat_with_agent(
         )
 
         # Determine access level
-        is_premium = agent_request.hasPaidX402 and x402_verified
+        # The verified receipt/header is authoritative. The body flag is only
+        # useful in local demo mode where the frontend has no wallet adapter.
+        is_premium = x402_verified
 
         # Get agent client and process the request
         agent_client = get_agent_client()
