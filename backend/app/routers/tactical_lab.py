@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..access import require_ai_access
-from ..agent.skills import suggest_lineup
+from ..agent.skills import analyze_squad, suggest_lineup
 from ..data import get_world_cup_snapshot
 from ..db import get_db_connection
 from ..models import Formation
@@ -38,6 +38,15 @@ async def compare_formations(
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
     max_budget = float(row["budget"])
+    current_squad = analyze_squad(request.squadPlayerIds)
+    baseline = None
+    if "error" not in current_squad:
+        baseline = {
+            "playerCount": len(request.squadPlayerIds),
+            "totalPoints": current_squad["total_points"],
+            "budgetUsed": current_squad["total_budget"],
+            "positionBreakdown": current_squad["position_breakdown"],
+        }
 
     comparisons = []
     for formation in SUPPORTED_FORMATIONS:
@@ -83,6 +92,7 @@ async def compare_formations(
         "selectedFormation": request.formation,
         "strategy": request.strategy,
         "serverBudget": max_budget,
+        "baseline": baseline,
         "recommended": best,
         "comparisons": comparisons,
         "accessSource": access["accessSource"],

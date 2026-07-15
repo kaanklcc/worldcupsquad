@@ -427,6 +427,71 @@ def get_player_report(player_id: str) -> dict:
 
 
 @gemini_tool
+def suggest_player_replacement(
+    squad_player_ids: List[str],
+    sell_player_id: str,
+    max_budget: float = 100,
+) -> dict:
+    """Recommend one like-for-like replacement for a named current player.
+
+    This is deliberately narrower than ``suggest_transfer``: it respects the
+    manager's named outgoing player and never turns a one-player request into
+    an eleven-player rebuild.
+    """
+    players = get_players()
+    by_id = {player.id: player for player in players}
+    sell_player = by_id.get(sell_player_id)
+    squad_players = [by_id[player_id] for player_id in squad_player_ids if player_id in by_id]
+    if not sell_player:
+        return {"error": "Named player is not available in the current catalog"}
+    if sell_player_id not in squad_player_ids:
+        return {"error": f"{sell_player.name} is not in the current saved squad"}
+    if not squad_players:
+        return {"error": "Cannot evaluate a replacement from an empty squad"}
+
+    current_cost = sum(player.price for player in squad_players)
+    candidates = [
+        player for player in players
+        if player.isAvailable and player.position == sell_player.position and player.id not in squad_player_ids
+    ]
+    budget_valid = [
+        player for player in candidates
+        if current_cost - sell_player.price + player.price <= max_budget
+    ]
+    if not budget_valid:
+        return {"error": f"No budget-valid {sell_player.position} replacement is available"}
+
+    def score(player: Player) -> float:
+        verified = _verified_contribution_score(player)
+        position_weight = 8.0 if player.position in {"MF", "FW"} else 2.0
+        risk_penalty = {"Low": 0.0, "Medium": 1.5, "High": 4.0}[player.premium_stats.injury_risk]
+        return player.points + verified * 1.5 + player.premium_stats.xg_per_game * position_weight - risk_penalty
+
+    ranked = sorted(budget_valid, key=lambda player: (score(player), player.points, -player.price), reverse=True)
+    buy_player = ranked[0]
+    projected_cost = current_cost - sell_player.price + buy_player.price
+    verified_delta = _verified_contribution_score(buy_player) - _verified_contribution_score(sell_player)
+    point_delta = buy_player.points - sell_player.points
+    price_delta = buy_player.price - sell_player.price
+    return {
+        "sell_player": sell_player.model_dump(),
+        "buy_player": buy_player.model_dump(),
+        "projected_budget": round(projected_cost, 1),
+        "max_budget": max_budget,
+        "points_upgrade": point_delta,
+        "verified_contribution_delta": verified_delta,
+        "alternatives": [player.model_dump() for player in ranked[1:3]],
+        "reasoning": (
+            f"Single-player change: {sell_player.name} → {buy_player.name}. "
+            f"Both are {sell_player.position}; projected squad cost is {projected_cost:.1f}M / {max_budget:g}M. "
+            f"Fantasy-points delta: {point_delta:+d}. "
+            f"Verified World Cup contribution delta: {verified_delta:+.1f}. "
+            f"xG is an Auto-Gaffer model estimate, not an official FIFA statistic."
+        ),
+    }
+
+
+@gemini_tool
 def suggest_lineup(
     formation: Literal['4-3-3', '4-4-2', '3-5-2', '4-2-3-1', '5-3-2'] = '4-3-3',
     match_context: str = '',

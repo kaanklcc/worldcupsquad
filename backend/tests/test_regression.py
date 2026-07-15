@@ -8,6 +8,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app import db
+from app.agent.gemini_client import GeminiAgentClient
 from app.agent.skills import suggest_lineup
 from app.config import settings
 from app.data import get_players, get_world_cup_snapshot
@@ -319,6 +320,36 @@ class AutoGafferRegressionTests(unittest.TestCase):
         self.assertIn(payload["verified"]["tournamentStats"]["data_status"], {"verified", "not_available"})
         self.assertIn("Auto-Gaffer scouting estimates", payload["provenance"]["notice"])
 
+    def test_agent_conversation_never_builds_a_lineup_and_named_replacement_is_single_player(self):
+        agent = GeminiAgentClient()
+        cubarsi = next(player for player in get_players() if "Cubars" in player.name)
+        squad_ids = [cubarsi.id]
+
+        self.assertEqual(
+            agent._classify_intent(f"{cubarsi.name} yerine kimi koyabilirim, sevmiyorum onu", squad_ids),
+            "targeted_transfer",
+        )
+        self.assertEqual(
+            agent._classify_intent("Ingiltere Arjantin macini kim yener, kadroma kimi almaliyim?", squad_ids),
+            "conversation",
+        )
+
+        replacement = agent._extract_targeted_transfer_action(
+            f"{cubarsi.name} yerine kimi koyabilirim", squad_ids, 100
+        )
+        self.assertIsNotNone(replacement)
+        self.assertEqual(replacement.type, "transfer")
+        self.assertEqual(replacement.sellPlayerId, cubarsi.id)
+        self.assertNotEqual(replacement.buyPlayerId, cubarsi.id)
+
+        discussion = agent._rule_based_fallback(
+            "Ingiltere Arjantin macini kim yener, kadroma kimi almaliyim?",
+            squad_ids,
+            True,
+        )
+        self.assertIsNone(discussion.suggestedAction)
+        self.assertIn("konu", discussion.message.lower())
+
     def test_tournament_hq_endpoint_exposes_schedule_and_roster_provenance(self):
         async def fake_overview(force_refresh=False):
             return {
@@ -385,6 +416,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["feature"], "what_if_tactical_lab")
         self.assertEqual(len(payload["comparisons"]), 5)
+        self.assertIn("baseline", payload)
         self.assertIn(payload["recommended"]["status"], {"ready", "unavailable"})
         self.assertIn("do not mutate", payload["notice"])
 

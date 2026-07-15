@@ -61,6 +61,7 @@ async def chat_with_agent(
             x402_verified=access["accessSource"] == "x402_verified",
             formation=agent_request.formation,
             max_budget=max_budget,
+            analysis_mode=agent_request.analysisMode,
         )
 
         response.isPremium = True

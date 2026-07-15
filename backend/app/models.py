@@ -90,6 +90,7 @@ class AgentRequest(BaseModel):
     hasPaidX402: bool = False
     squadPlayerIds: List[str] = Field(default_factory=list, max_length=19)
     formation: Formation = '4-3-3'
+    analysisMode: bool = False
 
 
 class ChatMessage(BaseModel):

@@ -450,6 +450,7 @@ export default function HomePage() {
             hasPaidX402: false,
             squadPlayerIds,
             formation,
+            analysisMode: isAnalytics,
           }),
         });
         

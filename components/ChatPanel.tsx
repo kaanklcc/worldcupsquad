@@ -58,7 +58,7 @@ export default function ChatPanel({
       onUnlockAccess();
       return;
     }
-    const promptText = input.trim() || 'Run Deep Tactical Analytics on my current squad. Respect the selected formation and budget. Evaluate positional balance, verified World Cup 2026 goals and assists where available, model xG estimates, availability, clean-sheet potential and price efficiency. Identify the three weakest tactical points, then return one budget-valid transfer or a complete executable lineup only when it materially improves the squad. Clearly distinguish verified facts from model estimates.';
+    const promptText = input.trim() || 'Run Deep Tactical Analytics on my current squad. Respect the selected formation and budget. Evaluate positional balance, verified World Cup 2026 goals and assists where available, model xG estimates, availability, clean-sheet potential and price efficiency. Identify the three weakest tactical points, compare alternatives, then return at most one optional budget-valid transfer when it materially improves the squad. Do not build a complete lineup unless I explicitly request one. Clearly distinguish verified facts from model estimates.';
     onSendMessage(promptText, true);
     setInput('');
   };

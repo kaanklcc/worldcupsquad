@@ -134,9 +134,25 @@ export default function TacticalLabPanel({
               <p className="font-label-sm text-[10px] uppercase tracking-widest text-amber-300">{tacticalLab.strategy} strategy</p>
               <h3 className="mt-1 font-display-lg text-2xl uppercase">Which shape wins your budget?</h3>
               <p className="mt-2 text-xs leading-relaxed text-slate-300">
-                Five formation proposals were scored without mutating the saved squad. The apply action remains a separate explicit confirmation.
+                This is an actual decision tool: it compares your current-squad baseline with five budget-valid XI simulations. It never saves or applies a result automatically.
               </p>
             </div>
+            {tacticalLab.baseline && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-sky-700">Current squad</p>
+                  <p className="mt-1 font-display-lg text-xl text-slate-900">{tacticalLab.baseline.playerCount} players</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">Baseline points</p>
+                  <p className="mt-1 font-display-lg text-xl text-slate-900">{tacticalLab.baseline.totalPoints}</p>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">Baseline budget</p>
+                  <p className="mt-1 font-display-lg text-xl text-slate-900">{tacticalLab.baseline.budgetUsed}M</p>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
               <table className="w-full min-w-[560px] text-left text-xs">
                 <thead className="bg-slate-100 text-[10px] uppercase tracking-wider text-slate-500">

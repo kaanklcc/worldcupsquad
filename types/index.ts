@@ -283,6 +283,12 @@ export interface TacticalLabResponse {
   selectedFormation: string;
   strategy: 'balanced' | 'attacking' | 'defensive';
   serverBudget: number;
+  baseline: {
+    playerCount: number;
+    totalPoints: number;
+    budgetUsed: number;
+    positionBreakdown: Record<'GK' | 'DF' | 'MF' | 'FW', number>;
+  } | null;
   recommended: TacticalLabComparison;
   comparisons: TacticalLabComparison[];
   snapshotDate: string;
