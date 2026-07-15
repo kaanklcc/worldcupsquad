@@ -129,10 +129,19 @@ class MCPClient:
             }
 
         elif tool_name == "apply_lineup":
-            from ..agent.skills import suggest_lineup
             formation = arguments.get("formation", "4-3-3")
             starting_ids = arguments.get("starting_player_ids", [])
             bench_ids = arguments.get("bench_player_ids", [])
+            formation_counts = {
+                "4-3-3": {"GK": 1, "DF": 4, "MF": 3, "FW": 3},
+                "4-4-2": {"GK": 1, "DF": 4, "MF": 4, "FW": 2},
+                "3-5-2": {"GK": 1, "DF": 3, "MF": 5, "FW": 2},
+                "4-2-3-1": {"GK": 1, "DF": 4, "MF": 5, "FW": 1},
+                "5-3-2": {"GK": 1, "DF": 5, "MF": 3, "FW": 2},
+            }
+            expected_counts = formation_counts.get(formation)
+            if not expected_counts:
+                return {"success": False, "error": "Unsupported formation", "simulated": True}
             players = get_players()
             catalog = {player.id: player for player in players}
             selected = [catalog.get(player_id) for player_id in [*starting_ids, *bench_ids]]
@@ -140,11 +149,10 @@ class MCPClient:
                 return {"success": False, "error": "Invalid lineup shape", "simulated": True}
             if any(player is None or not player.isAvailable for player in selected):
                 return {"success": False, "error": "Lineup contains an unknown or unavailable player", "simulated": True}
-            # Reuse the same position/formation validator as the agent skill.
-            expected = suggest_lineup(formation, "")
-            expected_positions = [catalog[player_id].position for player_id in expected.get("starting_player_ids", [])]
-            actual_positions = [player.position for player in selected[:11]]
-            if sorted(expected_positions) != sorted(actual_positions):
+            actual_counts = {position: 0 for position in expected_counts}
+            for player in selected[:11]:
+                actual_counts[player.position] += 1
+            if actual_counts != expected_counts:
                 return {"success": False, "error": "Lineup positions do not match formation", "simulated": True}
             return {
                 "success": True,

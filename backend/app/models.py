@@ -113,6 +113,7 @@ class CCTPResponse(BaseModel):
     txHash: str
     message: str
     simulated: bool = False  # Indicates if this is a realistic simulation
+    operation: Optional[dict] = None
 
 
 class TransferExecuteRequest(BaseModel):
@@ -128,6 +129,7 @@ class TransferExecuteResponse(BaseModel):
     message: str
     mcpReceipt: Optional[dict] = None
     simulated: bool = False
+    operation: Optional[dict] = None
 
 
 class LineupApplyRequest(BaseModel):
@@ -144,3 +146,4 @@ class LineupApplyResponse(BaseModel):
     appliedPlayerIds: List[str]
     mcpReceipt: Optional[dict] = None
     simulated: bool = False
+    operation: Optional[dict] = None

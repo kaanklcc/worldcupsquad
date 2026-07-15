@@ -9,6 +9,7 @@ interface PlayerSelectionModalProps {
   currentSquadIds: string[];
   budget: number;
   currentSquadCost: number;
+  currentPlayerPrice?: number;
   onSelectPlayer: (player: Player) => void;
 }
 
@@ -20,6 +21,7 @@ export default function PlayerSelectionModal({
   currentSquadIds,
   budget,
   currentSquadCost,
+  currentPlayerPrice = 0,
   onSelectPlayer,
 }: PlayerSelectionModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -44,7 +46,9 @@ export default function PlayerSelectionModal({
 
   if (!isOpen) return null;
 
-  const remainingBudget = budget - currentSquadCost;
+  // When replacing a filled slot, release the outgoing player's value before
+  // checking the incoming player. Empty slots keep the original calculation.
+  const remainingBudget = budget - currentSquadCost + currentPlayerPrice;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

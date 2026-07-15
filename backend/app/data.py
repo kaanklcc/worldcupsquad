@@ -6,6 +6,7 @@ silently fabricated when the official snapshot does not expose a stat.
 """
 
 import json
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -126,6 +127,11 @@ def load_players() -> List[Player]:
         "tournament": source["tournament"],
         "snapshotDate": source["snapshotDate"],
         "dataSource": source["dataSource"],
+        "dataQuality": (
+            "Official FIFA roster provenance; fantasy price, points and xG are "
+            "application estimates; tournament goals/assists are exposed only "
+            "when present in the dated FIFA statistics snapshot."
+        ),
         "sourceUrls": source["sourceUrls"],
         "teams": list(source["teams"].keys()),
         "playerCount": sum(len(team["players"]) for team in source["teams"].values()),
@@ -150,6 +156,82 @@ def get_data_metadata() -> Dict[str, Any]:
     if not _players_cache:
         get_players()
     return dict(_metadata_cache)
+
+
+def _intel_value(player: Player, key: str, floor: int, ceiling: int) -> int:
+    """Create stable *application* scouting signals without claiming FIFA facts."""
+    digest = sha256(f"{player.id}:{key}".encode("utf-8")).digest()
+    return floor + digest[0] % (ceiling - floor + 1)
+
+
+def get_player_intel(player_id: str) -> Dict[str, Any] | None:
+    """Return a source-aware scouting card payload for one rostered player.
+
+    The endpoint intentionally separates source-backed roster/tournament facts
+    from deterministic Auto-Gaffer model signals. It does not manufacture live
+    FIFA performance data when the dated snapshot has none.
+    """
+    player = next((item for item in get_players() if item.id == player_id), None)
+    if not player:
+        return None
+
+    position_bias = {
+        "GK": {"finishing": 28, "creation": 48, "progression": 54, "defending": 90},
+        "DF": {"finishing": 42, "creation": 57, "progression": 61, "defending": 84},
+        "MF": {"finishing": 64, "creation": 80, "progression": 82, "defending": 68},
+        "FW": {"finishing": 88, "creation": 70, "progression": 78, "defending": 40},
+    }[player.position]
+    metrics = []
+    for key, label in (
+        ("finishing", "Finishing"),
+        ("creation", "Creation"),
+        ("progression", "Progression"),
+        ("defending", "Defensive work"),
+        ("availability", "Availability signal"),
+    ):
+        base = position_bias.get(key, 74)
+        variance = _intel_value(player, key, -7, 7)
+        if key == "availability":
+            value = 62 if player.availability_status in {"unknown", None} else 88 if player.availability_status == "available" else 42
+        else:
+            value = max(35, min(99, base + variance + max(0, player.points - 74) // 4))
+        metrics.append({"key": key, "label": label, "value": value})
+
+    overall = max(55, min(99, int(round((player.points + sum(item["value"] for item in metrics[:4]) / 4) / 2))))
+    trend_center = min(98, max(52, overall))
+    trend = [
+        max(45, min(99, trend_center + _intel_value(player, f"trend-{index}", -6, 6)))
+        for index in range(5)
+    ]
+    top_metrics = sorted(metrics[:4], key=lambda item: item["value"], reverse=True)[:2]
+    stats = player.world_cup_stats.model_dump() if player.world_cup_stats else {"data_status": "not_available"}
+
+    return {
+        "player": player.model_dump(),
+        "verified": {
+            "rosterStatus": player.roster_status or "not_available",
+            "availabilityStatus": player.availability_status or "unknown",
+            "tournamentStats": stats,
+        },
+        "model": {
+            "isEstimate": True,
+            "overall": overall,
+            "tier": "elite" if overall >= 89 else "impact" if overall >= 80 else "scout",
+            "metrics": metrics,
+            "trend": trend,
+            "strengths": [item["label"] for item in top_metrics],
+            "scoutBrief": player.premium_stats.scout_note,
+        },
+        "provenance": {
+            "snapshotDate": player.data_updated_at,
+            "rosterSource": player.source_url,
+            "tournamentStatsSource": stats.get("source_url"),
+            "notice": (
+                "Roster and tournament figures are source-labelled. Overall, trend and attribute bars "
+                "are Auto-Gaffer scouting estimates, not official FIFA live statistics."
+            ),
+        },
+    }
 
 
 def get_world_cup_snapshot(topic: str = "") -> Dict[str, Any]:

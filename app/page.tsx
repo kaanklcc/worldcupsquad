@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt, LineupApplyReceipt, AccessStatus, AccessUnlockResponse } from '@/types';
+import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt, LineupApplyReceipt, AccessStatus, AccessUnlockResponse, MatchdayBriefResponse, TacticalLabResponse } from '@/types';
 import Header from '@/components/Header';
 import Pitch from '@/components/Pitch';
 import ChatPanel from '@/components/ChatPanel';
@@ -10,6 +10,8 @@ import Sidebar from '@/components/Sidebar';
 import ExecuteSyncModal from '@/components/ExecuteSyncModal';
 import AuthOverlay from '@/components/AuthOverlay';
 import AccessModal from '@/components/AccessModal';
+import TacticalLabPanel from '@/components/TacticalLabPanel';
+import PlayerIntelModal from '@/components/PlayerIntelModal';
 import { apiFetch } from '@/lib/api';
 
 type SelectedSlot = SquadSlot & { isBench: boolean };
@@ -23,6 +25,13 @@ const FORMATION_COUNTS: Record<string, { df: number; mf: number; fw: number }> =
 };
 
 const DEEP_ANALYTICS_PROMPT = 'Run Deep Tactical Analytics on my current squad. Respect the selected formation and the authenticated server-side budget. Evaluate positional balance, verified World Cup 2026 goals and assists where available, model xG estimates, player availability, clean-sheet potential and price efficiency. Identify the three weakest tactical points, compare at least two viable transfer alternatives, then return one executable budget-valid transfer only when it materially improves the squad. Clearly distinguish verified tournament facts from model estimates.';
+
+function createIdempotencyKey(action: string): string {
+  const suffix = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `gaffer-${action}-${suffix}`;
+}
 
 function createSquadForFormation(formation: string): SquadSlot[] {
   const counts = FORMATION_COUNTS[formation] ?? FORMATION_COUNTS['4-3-3'];
@@ -80,6 +89,8 @@ export default function HomePage() {
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [matchdayBrief, setMatchdayBrief] = useState<MatchdayBriefResponse | null>(null);
+  const [tacticalLab, setTacticalLab] = useState<TacticalLabResponse | null>(null);
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState<string | null>(null);
@@ -88,6 +99,8 @@ export default function HomePage() {
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
+  const [intelPlayer, setIntelPlayer] = useState<Player | null>(null);
+  const [intelSlot, setIntelSlot] = useState<SelectedSlot | null>(null);
 
   // Formation state
   const [formation, setFormation] = useState('4-3-3');
@@ -329,6 +342,19 @@ export default function HomePage() {
     [selectedSlot]
   );
 
+  const handleOpenPlayerIntel = useCallback((player: Player, slot: SquadSlot, isBench: boolean) => {
+    setIntelPlayer(player);
+    setIntelSlot({ ...slot, isBench });
+  }, []);
+
+  const handleReplaceFromIntel = useCallback(() => {
+    if (!intelSlot) return;
+    setSelectedSlot(intelSlot);
+    setIntelPlayer(null);
+    setIntelSlot(null);
+    setModalOpen(true);
+  }, [intelSlot]);
+
   // CCTP Bridge
   const handleCCTP = useCallback(async () => {
     if (!accessStatus?.hasFinanceAccess) {
@@ -361,6 +387,7 @@ export default function HomePage() {
         simulated: boolean;
       }>('/api/cctp', {
         method: 'POST',
+        headers: { 'Idempotency-Key': createIdempotencyKey('cctp') },
         body: JSON.stringify({
           walletAddress: accessStatus.walletAddress,
           amount: 20,
@@ -458,54 +485,82 @@ export default function HomePage() {
   );
 
 
+  const handleMatchdayBrief = useCallback(async () => {
+    setActiveTab('Matchday');
+    setTacticalLab(null);
+    setMatchdayBrief(null);
+    try {
+      const data = await apiFetch<MatchdayBriefResponse>(`/api/worldcup/matchday-brief?formation=${encodeURIComponent(formation)}`);
+      setMatchdayBrief(data);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-matchday-error-${Date.now()}`,
+          role: 'assistant',
+          content: `⚠️ Matchday Brief yüklenemedi: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        },
+      ]);
+    }
+  }, [formation]);
+
+  const handleTacticalLab = useCallback(async () => {
+    if (!accessStatus?.hasAnalyticsAccess) {
+      setAccessError(null);
+      setAccessModalOpen(true);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-lab-locked-${Date.now()}`,
+          role: 'assistant',
+          content: '🔒 **Tactical Lab kilitli**\n\nWhat-if diziliş karşılaştırması, bütçe optimizasyonu ve kadroyu değiştirmeden senaryo testleri Pro üyelik veya x402 Match Pass ile açılır.',
+          provider: 'locked',
+        },
+      ]);
+      return;
+    }
+    setActiveTab('Tactical Lab');
+    setMatchdayBrief(null);
+    setTacticalLab(null);
+    try {
+      const data = await apiFetch<TacticalLabResponse>('/api/tactical-lab/compare', {
+        method: 'POST',
+        body: JSON.stringify({
+          formation,
+          strategy: 'attacking',
+          squadPlayerIds,
+          matchContext: 'France Spain England Argentina',
+        }),
+      });
+      setTacticalLab(data);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-lab-error-${Date.now()}`,
+          role: 'assistant',
+          content: `⚠️ Tactical Lab çalıştırılamadı: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        },
+      ]);
+    }
+  }, [accessStatus?.hasAnalyticsAccess, formation, squadPlayerIds]);
+
   // Tab click handler (Triggers Premium analysis when Analytics is clicked)
   const handleTabClick = useCallback((tab: string) => {
+    if (tab === 'Matchday') {
+      handleMatchdayBrief();
+      return;
+    }
+    if (tab === 'Tactical Lab') {
+      handleTacticalLab();
+      return;
+    }
     if (tab === 'Analytics') {
       setActiveTab('AI Consultant');
       // Locked users receive the complete capability/paywall text from the
       // agent endpoint; entitled users receive the same deep analysis used by
       // the dedicated button.
       handleAgentChat(DEEP_ANALYTICS_PROMPT, true);
-    } else if (tab === 'Matchday') {
-      const matchdayMessageId = `msg-matchday-${Date.now()}`;
-      setActiveTab('AI Consultant');
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: matchdayMessageId,
-          role: 'assistant',
-          content: '🌐 **MATCHDAY DATA SYNC**\n\nFIFA World Cup 2026 fixture snapshot yükleniyor...',
-        },
-      ]);
-      apiFetch<{
-        snapshotDate: string;
-        matches: Array<{
-          homeTeam: string;
-          awayTeam: string;
-          date: string;
-          kickoffLocal: string;
-          venue: string;
-        }>;
-      }>('/api/worldcup/snapshot')
-        .then((snapshot) => {
-          const fixtures = snapshot.matches.map((match) =>
-            `• **${match.homeTeam} vs ${match.awayTeam}** — ${match.date} ${match.kickoffLocal} local, ${match.venue}`
-          ).join('\n');
-          setMessages((prev) => prev.map((message) => message.id === matchdayMessageId ? {
-            ...message,
-            content:
-              `🏆 **MATCHDAY — FIFA World Cup 2026**\n\n${fixtures}\n\n` +
-              `Data snapshot: **${snapshot.snapshotDate}**\n` +
-              `Skor ve resmi ilk 11 yalnızca doğrulanmış sonuç geldiğinde gösterilir.`,
-          } : message));
-        })
-        .catch((error) => {
-          setMessages((prev) => prev.map((message) => message.id === matchdayMessageId ? {
-            ...message,
-            content: `⚠️ Matchday verisi alınamadı: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          } : message));
-        });
-      return;
     } else if (tab === 'Finance') {
       setActiveTab('AI Consultant');
       if (!accessStatus?.hasFinanceAccess) {
@@ -533,7 +588,7 @@ export default function HomePage() {
     } else {
       setActiveTab(tab);
     }
-  }, [accessStatus?.hasFinanceAccess, handleAgentChat, budget, currentSquadCost]);
+  }, [accessStatus?.hasFinanceAccess, handleAgentChat, handleMatchdayBrief, handleTacticalLab, budget, currentSquadCost]);
 
   // Premium Unlock Handler
   const handleUnlockPremium = useCallback(() => {
@@ -554,6 +609,7 @@ export default function HomePage() {
     try {
       const data = await apiFetch<AccessUnlockResponse>('/api/access/unlock', {
         method: 'POST',
+        headers: { 'Idempotency-Key': createIdempotencyKey(`access-${mode}`) },
         body: JSON.stringify({
           mode,
           hasPaidX402: !accessStatus?.isDemoAccount,
@@ -664,11 +720,15 @@ export default function HomePage() {
           .map((playerId) => players.find((player) => player.id === playerId))
           .filter((player): player is Player => Boolean(player));
         if (lineupPlayers.length !== 11) return;
+        const benchPlayers = (action.benchPlayerIds ?? [])
+          .map((playerId) => players.find((player) => player.id === playerId))
+          .filter((player): player is Player => Boolean(player));
 
         setActionExecuting(true);
         try {
           const receipt = await apiFetch<LineupApplyReceipt>('/api/squad/apply-lineup', {
             method: 'POST',
+            headers: { 'Idempotency-Key': createIdempotencyKey('lineup') },
             body: JSON.stringify({
               formation: lineupFormation,
               startingPlayerIds,
@@ -687,10 +747,20 @@ export default function HomePage() {
             ...slot,
             player: byPosition[slot.position].shift() ?? null,
           }));
+          const benchByPosition: Record<Player['position'], Player[]> = {
+            GK: benchPlayers.filter((player) => player.position === 'GK'),
+            DF: benchPlayers.filter((player) => player.position === 'DF'),
+            MF: benchPlayers.filter((player) => player.position === 'MF'),
+            FW: benchPlayers.filter((player) => player.position === 'FW'),
+          };
+          const appliedBench = createInitialBench().map((slot) => ({
+            ...slot,
+            player: benchByPosition[slot.position].shift() ?? null,
+          }));
 
           setFormation(lineupFormation);
           setSquad(appliedSquad);
-          setBench(createInitialBench());
+          setBench(appliedBench);
           setMessages((prev) => [
             ...prev.map((msg) =>
               msg.suggestedAction?.type === 'lineup' &&
@@ -732,6 +802,7 @@ export default function HomePage() {
         await saveSquadSnapshot();
         const receipt = await apiFetch<TransferReceipt>('/api/transfers/execute', {
           method: 'POST',
+          headers: { 'Idempotency-Key': createIdempotencyKey('transfer') },
           body: JSON.stringify({
             sellPlayerId: action.sellPlayerId,
             buyPlayerId: action.buyPlayerId,
@@ -849,6 +920,7 @@ export default function HomePage() {
               bench={bench}
               onBenchSlotClick={handleBenchSlotClick}
               onRemovePlayer={handleRemovePlayer}
+              onPlayerClick={handleOpenPlayerIntel}
               showBench={activeTab === 'Substitutions'}
               isPremiumUnlocked={isPremiumUnlocked}
               onUnlockPremium={handleUnlockPremium}
@@ -899,6 +971,7 @@ export default function HomePage() {
         currentSquadIds={squadPlayerIds}
         budget={budget}
         currentSquadCost={currentSquadCost}
+        currentPlayerPrice={selectedSlot?.player?.price ?? 0}
         onSelectPlayer={handleSelectPlayer}
       />
 
@@ -909,6 +982,18 @@ export default function HomePage() {
         txHash={syncTxHash}
         error={syncError}
         onClose={() => setIsSyncing(false)}
+      />
+
+      <PlayerIntelModal
+        player={intelPlayer}
+        isOpen={Boolean(intelPlayer)}
+        isPremiumUnlocked={isPremiumUnlocked}
+        onClose={() => {
+          setIntelPlayer(null);
+          setIntelSlot(null);
+        }}
+        onReplace={handleReplaceFromIntel}
+        onUnlockPremium={handleUnlockPremium}
       />
 
       {accessModalOpen && (
@@ -922,6 +1007,16 @@ export default function HomePage() {
           onSaveWallet={handleSaveWallet}
         />
       )}
+
+      <TacticalLabPanel
+        matchdayBrief={matchdayBrief}
+        tacticalLab={tacticalLab}
+        players={players}
+        onClose={() => {
+          setMatchdayBrief(null);
+          setTacticalLab(null);
+        }}
+      />
     </div>
   );
 }

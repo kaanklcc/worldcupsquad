@@ -31,6 +31,36 @@ export interface Player {
   };
 }
 
+export interface PlayerIntelMetric {
+  key: string;
+  label: string;
+  value: number;
+}
+
+export interface PlayerIntel {
+  player: Player;
+  verified: {
+    rosterStatus: string;
+    availabilityStatus: string;
+    tournamentStats: NonNullable<Player['world_cup_stats']>;
+  };
+  model: {
+    isEstimate: true;
+    overall: number;
+    tier: 'elite' | 'impact' | 'scout';
+    metrics: PlayerIntelMetric[];
+    trend: number[];
+    strengths: string[];
+    scoutBrief: string;
+  };
+  provenance: {
+    snapshotDate?: string;
+    rosterSource?: string;
+    tournamentStatsSource?: string;
+    notice: string;
+  };
+}
+
 export interface SquadSlot {
   position: 'GK' | 'DF' | 'MF' | 'FW';
   slotIndex: number;
@@ -93,6 +123,22 @@ export interface AccessUnlockResponse extends AccessStatus {
   message: string;
   receipt: string;
   simulated: boolean;
+  operation?: OperationReceipt;
+}
+
+export interface OperationReceipt {
+  operationId: string;
+  idempotencyKey: string;
+  actionType: 'apply_lineup' | 'execute_transfer' | 'acquire_cctp_backing' | string;
+  status: 'processing' | 'confirmed' | 'failed';
+  provider: string;
+  network?: string | null;
+  txHash?: string | null;
+  receipt?: Record<string, unknown> | null;
+  error?: string | null;
+  simulated: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TransferReceipt {
@@ -101,6 +147,16 @@ export interface TransferReceipt {
   message: string;
   mcpReceipt?: Record<string, unknown>;
   simulated: boolean;
+  operation?: OperationReceipt;
+}
+
+export interface CCTPReceipt {
+  success: boolean;
+  newBudgetBonus: number;
+  txHash: string;
+  message: string;
+  simulated: boolean;
+  operation?: OperationReceipt;
 }
 
 export interface LineupApplyReceipt {
@@ -110,6 +166,56 @@ export interface LineupApplyReceipt {
   appliedPlayerIds: string[];
   mcpReceipt?: Record<string, unknown>;
   simulated: boolean;
+  operation?: OperationReceipt;
+}
+
+export interface TournamentTeam {
+  id: string;
+  code: string;
+  name: string;
+  group: string;
+  flag?: string;
+}
+
+export interface TournamentMatch {
+  id: string;
+  matchNumber: number;
+  stageKey: string;
+  stage: string;
+  group: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeCode: string;
+  awayCode: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: 'scheduled' | 'live' | 'final' | string;
+  kickoffLocal: string;
+  venue: string;
+  city: string;
+}
+
+export interface TournamentRoster {
+  team: string;
+  rosterAvailable: boolean;
+  sourceUrl?: string;
+  players: Player[];
+}
+
+export interface TournamentOverview {
+  mode: 'live_community_feed' | 'local_fallback';
+  updatedAt: string;
+  liveError?: string;
+  teams: TournamentTeam[];
+  groups: Array<{ name: string; teams: TournamentTeam[] }>;
+  matches: TournamentMatch[];
+  rosters: TournamentRoster[];
+  stageOrder: Record<string, number>;
+  sources: {
+    liveSchedule: string;
+    localRoster: Record<string, string>;
+    notice: string;
+  };
 }
 
 export interface ChatMessage {
@@ -120,4 +226,66 @@ export interface ChatMessage {
   suggestedAction?: SuggestedAction;
   actionApplied?: boolean;
   provider?: 'gemini' | 'fallback' | 'locked';
+}
+
+export interface MatchdayBriefResponse {
+  success: boolean;
+  briefType: 'gaffer_matchday_brief';
+  match: {
+    id: string;
+    stage: string;
+    homeTeam: string;
+    awayTeam: string;
+    date: string;
+    kickoffLocal: string;
+    venue: string;
+    status: string;
+  };
+  lineup: {
+    formation: string;
+    playerIds: string[];
+    players: Player[];
+    budgetUsed: number;
+    maxBudget: number;
+    totalPoints: number;
+  };
+  captain: Player;
+  viceCaptain: Player;
+  watchouts: string[];
+  availabilitySignals: string[];
+  dataConfidence: 'low' | 'medium' | 'high';
+  snapshotDate: string;
+  dataQuality: string;
+  sourceUrls: string[];
+  scenarios: Array<{
+    id: string;
+    label: string;
+    formation: string;
+    instruction: string;
+  }>;
+}
+
+export interface TacticalLabComparison {
+  formation: string;
+  status: 'ready' | 'unavailable';
+  budgetUsed?: number;
+  maxBudget?: number;
+  totalPoints?: number;
+  optimizationScore?: number;
+  playerIds?: string[];
+  pointsDeltaFromBest?: number;
+  reason?: string;
+}
+
+export interface TacticalLabResponse {
+  success: boolean;
+  feature: 'what_if_tactical_lab';
+  selectedFormation: string;
+  strategy: 'balanced' | 'attacking' | 'defensive';
+  serverBudget: number;
+  recommended: TacticalLabComparison;
+  comparisons: TacticalLabComparison[];
+  snapshotDate: string;
+  dataQuality: string;
+  notice: string;
 }

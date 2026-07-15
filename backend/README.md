@@ -21,6 +21,8 @@ Python FastAPI backend for the Auto-Gaffer World Cup 2026 Fantasy Football Manag
 - `POST /api/access/unlock` - Activate Kaan's free judge demo or process x402 access
 - `POST /api/access/wallet` - Validate and save an Injective/EVM wallet
 - `POST /api/agent` - Chat with the membership/x402-gated AI consultant
+- `GET /api/worldcup/matchday-brief` - Build a source-aware pre-match brief from the dated snapshot
+- `POST /api/tactical-lab/compare` - Compare all supported formations without mutating the saved squad
 - `POST /api/squad/apply-lineup` - Apply a confirmed, budget-validated AI lineup
 - `POST /api/cctp` - Bridge USDC from Ethereum to Injective
 - `POST /api/transfers/execute` - Execute transfers via MCP
@@ -182,8 +184,7 @@ labelled simulated and creates a zero-USDC audit receipt.
 
 ### CCTP simulation
 
-Without `CIRCLE_API_KEY`, CCTP returns realistic simulations.
-The response includes `simulated: true` to indicate this.
+Without wallet signing and a live Circle/Injective adapter, CCTP returns a realistic, explicitly labelled simulation. The API never treats a simulated receipt as a real on-chain settlement.
 
 ## License
 

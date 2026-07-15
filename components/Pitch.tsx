@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { SquadSlot } from '@/types';
+import { Player, SquadSlot } from '@/types';
 
 interface PitchProps {
   squad: SquadSlot[];
@@ -11,6 +11,7 @@ interface PitchProps {
   bench: SquadSlot[];
   onBenchSlotClick: (slot: SquadSlot) => void;
   onRemovePlayer: (slot: SquadSlot, isBench: boolean) => void;
+  onPlayerClick: (player: Player, slot: SquadSlot, isBench: boolean) => void;
   showBench: boolean;
   isPremiumUnlocked: boolean;
   onUnlockPremium: () => void;
@@ -24,6 +25,7 @@ export default function Pitch({
   bench,
   onBenchSlotClick,
   onRemovePlayer,
+  onPlayerClick,
   showBench,
   isPremiumUnlocked,
   onUnlockPremium,
@@ -102,13 +104,16 @@ export default function Pitch({
         : 'w-20 h-28 md:w-24 md:h-34'
       : 'w-22 h-30 md:w-26 md:h-38';
 
-    const clickHandler = () => isBenchSlot ? onBenchSlotClick(slot) : onSlotClick(slot);
+    const selectHandler = () => isBenchSlot ? onBenchSlotClick(slot) : onSlotClick(slot);
+    const clickHandler = () => isFilled && slot.player
+      ? onPlayerClick(slot.player, slot, isBenchSlot)
+      : selectHandler();
 
     if (!isFilled) {
       return (
         <button
           key={`${slot.position}-${slot.slotIndex}-${isBenchSlot ? 'bench' : 'field'}`}
-          onClick={clickHandler}
+          onClick={selectHandler}
           className={`player-card relative ${cardSizeClass} rounded-xl bg-white/70 backdrop-blur-md border-2 border-dashed border-slate-300 hover:border-primary hover:bg-white transition-all shadow-md flex flex-col items-center justify-end p-2 overflow-hidden cursor-pointer group`}
         >
           <div className="absolute inset-0 flex items-center justify-center opacity-10">
@@ -227,16 +232,29 @@ export default function Pitch({
             <div className={`h-full ${progressFill}`} style={{ width: `${pointsPct}%` }}></div>
           </div>
 
-          {/* Filled cards are replacement controls, not remove controls. */}
+          {/* Filled cards open the detailed Intel card. */}
           <div className="absolute inset-x-1 bottom-2 z-30 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
             <span className="bg-slate-950/80 text-white rounded px-2 py-1 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1">
-              <span className="material-symbols-outlined text-[11px]">swap_horiz</span>
-              Replace player
+              <span className="material-symbols-outlined text-[11px]">insights</span>
+              Open Intel
             </span>
           </div>
         </button>
 
-        {/* Separate sibling avoids invalid nested buttons while keeping the card clickable for replacement. */}
+        <button
+          type="button"
+          aria-label={`Replace ${player.name}`}
+          title="Replace player"
+          onClick={(event) => {
+            event.stopPropagation();
+            selectHandler();
+          }}
+          className="absolute -top-2 -left-2 z-50 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-amber-300 shadow-lg transition hover:scale-110 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+        >
+          <span className="material-symbols-outlined text-[15px] font-bold">swap_horiz</span>
+        </button>
+
+        {/* Separate siblings avoid invalid nested buttons. */}
         <button
           type="button"
           aria-label={`Remove ${player.name}`}

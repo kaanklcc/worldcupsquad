@@ -172,6 +172,35 @@ def init_db():
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """)
+
+    # 7. Action ledger: every external or user-visible tactical operation has
+    # a durable intent, state, receipt and idempotency key. This lets the UI
+    # show an honest transaction timeline and prevents retries from blindly
+    # replaying an MCP/CCTP action.
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS operation_receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        operation_id TEXT UNIQUE NOT NULL,
+        idempotency_key TEXT UNIQUE NOT NULL,
+        user_id INTEGER NOT NULL,
+        action_type TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        network TEXT,
+        tx_hash TEXT,
+        receipt TEXT,
+        error_message TEXT,
+        simulated INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_operation_receipts_user_created
+    ON operation_receipts(user_id, created_at DESC)
+    """)
     
     conn.commit()
     

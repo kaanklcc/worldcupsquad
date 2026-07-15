@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 interface SidebarProps {
   activeTab: string;
   onTabClick: (tab: string) => void;
@@ -83,6 +85,21 @@ export default function Sidebar({ activeTab, onTabClick, onExecuteClick, onLogou
           {!hasAnalyticsAccess && <span className="material-symbols-outlined ml-auto text-sm text-amber-400">lock</span>}
         </button>
 
+        <button
+          onClick={() => onTabClick('Tactical Lab')}
+          className={`flex items-center gap-4 px-4 py-2.5 transition-all text-left w-full ${
+            activeTab === 'Tactical Lab'
+              ? 'bg-primary-container text-on-primary-container font-bold border-l-4 border-secondary translate-x-1'
+              : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface hover:backdrop-brightness-125'
+          }`}
+        >
+          <span className="material-symbols-outlined">science</span>
+          <span className="font-body-md text-body-md uppercase tracking-widest">
+            Tactical Lab
+          </span>
+          {!hasAnalyticsAccess && <span className="material-symbols-outlined ml-auto text-sm text-amber-400">lock</span>}
+        </button>
+
         <button 
           onClick={() => onTabClick('Finance')}
           className={`flex items-center gap-4 px-4 py-2.5 transition-all text-left w-full ${
@@ -111,6 +128,22 @@ export default function Sidebar({ activeTab, onTabClick, onExecuteClick, onLogou
             Settings
           </span>
         </button>
+
+        <div className="my-2 border-t border-outline-variant/20" />
+        <Link
+          href="/tournament"
+          className="flex items-center gap-4 px-4 py-2.5 text-on-surface-variant transition hover:bg-surface-container-high hover:text-on-surface"
+        >
+          <span className="material-symbols-outlined">emoji_events</span>
+          <span className="font-body-md text-body-md uppercase tracking-widest">Tournament HQ</span>
+        </Link>
+        <Link
+          href="/transactions"
+          className="flex items-center gap-4 px-4 py-2.5 text-on-surface-variant transition hover:bg-surface-container-high hover:text-on-surface"
+        >
+          <span className="material-symbols-outlined">receipt_long</span>
+          <span className="font-body-md text-body-md uppercase tracking-widest">Action Ledger</span>
+        </Link>
       </nav>
 
       {/* Execute button */}

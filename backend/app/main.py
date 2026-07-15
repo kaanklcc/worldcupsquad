@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import players, agent, cctp, transfers, auth, squads, worldcup, access
+from .routers import players, agent, cctp, transfers, auth, squads, worldcup, access, tactical_lab, operations
 
 
 def create_app() -> FastAPI:
@@ -47,6 +47,8 @@ def create_app() -> FastAPI:
     app.include_router(squads.router)
     app.include_router(worldcup.router)
     app.include_router(access.router)
+    app.include_router(tactical_lab.router)
+    app.include_router(operations.router)
 
     @app.get("/")
     async def root():

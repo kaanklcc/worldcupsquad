@@ -18,6 +18,7 @@ from ..access import (
     save_wallet,
 )
 from ..config import settings
+from ..operation_ledger import begin_operation, confirm_operation, fail_operation
 from ..x402 import get_x402_verifier
 from .squads import get_current_user_id
 
@@ -101,19 +102,53 @@ async def unlock_access(
     payment_signature: Optional[str] = Header(None, alias="PAYMENT-SIGNATURE"),
     legacy_payment: Optional[str] = Header(None, alias="X-Payment"),
     legacy_receipt: Optional[str] = Header(None, alias="X-Payment-Receipt"),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user_id: int = Depends(get_current_user_id),
 ):
     current = get_access_status(user_id)
+    action_type = "unlock_membership" if body.mode == "membership" else "unlock_match_pass"
+
+    def begin_unlock_operation():
+        operation, replay = begin_operation(
+            user_id=user_id,
+            action_type=action_type,
+            provider="x402",
+            network=settings.x402_network,
+            idempotency_key=idempotency_key,
+            payload={"mode": body.mode, "walletAddress": body.walletAddress or ""},
+        )
+        if replay:
+            if operation["status"] == "confirmed" and operation["receipt"]:
+                return operation, operation["receipt"]
+            raise HTTPException(status_code=409, detail=f"Access operation is {operation['status']}; create a new intent to retry")
+        return operation, None
 
     # The named judge/demo account is always explicit, free, and labelled as
     # simulated.  It never enters a payment or wallet-signing flow.
     if current["isDemoAccount"]:
-        result = grant_demo_membership(user_id)
-        return {
-            "success": True,
-            "message": "Kaan demo membership activated. No payment was charged.",
-            **result,
-        }
+        operation, replay_receipt = begin_unlock_operation()
+        if replay_receipt:
+            return {**replay_receipt, "operation": operation}
+        try:
+            result = grant_demo_membership(user_id)
+            payload = {
+                "success": True,
+                "message": "Kaan demo membership activated. No payment was charged.",
+                **result,
+            }
+            confirmed = confirm_operation(
+                operation["operationId"],
+                receipt=payload,
+                tx_hash=result["receipt"],
+                simulated=True,
+            )
+            return {**payload, "operation": confirmed}
+        except HTTPException as error:
+            fail_operation(operation["operationId"], str(error.detail))
+            raise
+        except Exception as error:
+            fail_operation(operation["operationId"], str(error))
+            raise HTTPException(status_code=500, detail=f"Demo membership activation failed: {error}")
 
     signature = payment_signature or legacy_payment
     receipt = legacy_receipt
@@ -121,45 +156,79 @@ async def unlock_access(
     # Local hackathon demo: the UI deliberately asks the user to start a
     # simulated x402 purchase.  This branch must be disabled in production.
     if _is_local_demo() and settings.x402_allow_simulated_purchases and body.hasPaidX402:
-        demo_receipt = f"x402_demo_{body.mode}_{user_id}_{int(time.time())}"
-        result = grant_paid_access(
-            user_id,
-            mode=body.mode,
-            source="x402_demo",
-            receipt=demo_receipt,
-            simulated=True,
-            wallet_address=body.walletAddress,
-        )
-        response.headers["PAYMENT-RESPONSE"] = demo_receipt
-        return {
-            "success": True,
-            "message": "Simulated x402 access activated; no real USDC was transferred.",
-            **result,
-        }
+        operation, replay_receipt = begin_unlock_operation()
+        if replay_receipt:
+            return {**replay_receipt, "operation": operation}
+        try:
+            demo_receipt = f"x402_demo_{body.mode}_{user_id}_{int(time.time())}"
+            result = grant_paid_access(
+                user_id,
+                mode=body.mode,
+                source="x402_demo",
+                receipt=demo_receipt,
+                simulated=True,
+                wallet_address=body.walletAddress,
+            )
+            response.headers["PAYMENT-RESPONSE"] = demo_receipt
+            payload = {
+                "success": True,
+                "message": "Simulated x402 access activated; no real USDC was transferred.",
+                **result,
+            }
+            confirmed = confirm_operation(
+                operation["operationId"],
+                receipt=payload,
+                tx_hash=demo_receipt,
+                simulated=True,
+            )
+            return {**payload, "operation": confirmed}
+        except HTTPException as error:
+            fail_operation(operation["operationId"], str(error.detail))
+            raise
+        except Exception as error:
+            fail_operation(operation["operationId"], str(error))
+            raise HTTPException(status_code=500, detail=f"Simulated x402 access activation failed: {error}")
 
     if not signature and not receipt:
         _raise_payment_required(body.mode)
 
-    verifier = get_x402_verifier()
-    requirement = _payment_requirement(body.mode)
-    verification = await verifier.verify_and_settle(
-        payment_signature=signature,
-        payment_requirements=requirement["accepts"][0],
-    )
-    expected = MEMBERSHIP_PRICE_USDC if body.mode == "membership" else SINGLE_ACCESS_PRICE_USDC
-    amount = float(verification.get("amount") or 0)
-    currency = str(verification.get("currency") or "").upper()
-    if not verification.get("verified") or currency != "USDC" or amount < expected:
-        _raise_payment_required(body.mode)
+    operation, replay_receipt = begin_unlock_operation()
+    if replay_receipt:
+        return {**replay_receipt, "operation": operation}
+    try:
+        verifier = get_x402_verifier()
+        requirement = _payment_requirement(body.mode)
+        verification = await verifier.verify_and_settle(
+            payment_signature=signature,
+            payment_requirements=requirement["accepts"][0],
+        )
+        expected = MEMBERSHIP_PRICE_USDC if body.mode == "membership" else SINGLE_ACCESS_PRICE_USDC
+        amount = float(verification.get("amount") or 0)
+        currency = str(verification.get("currency") or "").upper()
+        if not verification.get("verified") or currency != "USDC" or amount < expected:
+            _raise_payment_required(body.mode)
 
-    verified_receipt = str(verification.get("receipt") or receipt or f"x402_verified_{user_id}_{int(time.time())}")
-    result = grant_paid_access(
-        user_id,
-        mode=body.mode,
-        source="x402_verified",
-        receipt=verified_receipt,
-        simulated=False,
-        wallet_address=body.walletAddress,
-    )
-    response.headers["PAYMENT-RESPONSE"] = str(verification.get("paymentResponse") or verified_receipt)
-    return {"success": True, "message": "x402 payment verified and access activated.", **result}
+        verified_receipt = str(verification.get("receipt") or receipt or f"x402_verified_{user_id}_{int(time.time())}")
+        result = grant_paid_access(
+            user_id,
+            mode=body.mode,
+            source="x402_verified",
+            receipt=verified_receipt,
+            simulated=False,
+            wallet_address=body.walletAddress,
+        )
+        response.headers["PAYMENT-RESPONSE"] = str(verification.get("paymentResponse") or verified_receipt)
+        payload = {"success": True, "message": "x402 payment verified and access activated.", **result}
+        confirmed = confirm_operation(
+            operation["operationId"],
+            receipt=payload,
+            tx_hash=verified_receipt,
+            simulated=False,
+        )
+        return {**payload, "operation": confirmed}
+    except HTTPException as error:
+        fail_operation(operation["operationId"], str(error.detail))
+        raise
+    except Exception as error:
+        fail_operation(operation["operationId"], str(error))
+        raise HTTPException(status_code=500, detail=f"x402 access activation failed: {error}")

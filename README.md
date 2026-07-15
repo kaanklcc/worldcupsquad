@@ -12,11 +12,18 @@ The product solves a simple fan problem: World Cup fantasy decisions are spread 
 - Ask the entitled Gemini-powered tactical assistant to search players, rank positions, analyse the squad, read the dated World Cup snapshot, and propose a structured starting XI.
 - Confirm an AI lineup in the UI to apply the exact player IDs and formation after server-side budget and position validation.
 - Open Matchday to load the dated FIFA fixture snapshot for the two semi-finals; unknown scores and official starting XIs are not invented.
+- Open **Tournament HQ** for a 48-team World Cup directory: group overview, knockout bracket, filterable fixtures, and squad-scoped Scout Cards. The schedule is clearly marked as a community live feed; player-level data remains limited to dated FIFA roster snapshots.
+- Compare players in the original **Scout Card** view: price, verified goals/assists where available, model xG, points, readiness and source status are kept distinct.
+- Click any selected player on the main pitch to open an individual **Player Intel Card**. It fetches player-specific source metadata plus a clearly labelled Auto-Gaffer model layer: radar, five-point signal trend, tactical attributes and scout brief. The small left swap control preserves replacement; the red control removes the player.
 - Run one unified Deep Tactical Analytics flow from the sidebar or chat panel. It evaluates formation balance, authenticated budget, verified World Cup contributions, model xG, availability, injury risk and price efficiency before producing an executable action.
+- Open **Gaffer Matchday Brief** for a source-aware pre-match cockpit: fixture context, budget-valid XI, captain/vice-captain signals, risk flags and two tactical scenarios.
+- Use the premium **What-if Tactical Lab** to compare all supported formations against the same server-side budget without mutating the saved squad; only a separate explicit apply action can change the pitch.
 - Confirm or explicitly reject every AI lineup/transfer proposal. Rejection leaves the persisted squad unchanged.
 - Use the `Kaan` judge/demo account in a deliberately locked initial state, then activate all Pro features for free from the membership dialog. This branch is username-scoped, labelled simulated and never charges money.
 - Bridge a one-time 20 USDC budget boost through the CCTP flow. Local development uses a clearly labelled simulation until wallet signing is configured.
 - Approve a transfer through the backend MCP client. The default transport starts the standalone MCP server over stdio and returns a structured receipt.
+- Open **Action Ledger** to inspect a durable intent and receipt for every membership unlock, lineup application, transfer and CCTP attempt. The same `Idempotency-Key` returns its original receipt and cannot silently replay a provider mutation.
+- The redesigned **Manager Ledger** is also the x402 access console: it explains what Pro / Match Pass unlocks, opens the wallet + membership dialog, filters access/tactical/funding receipts, and exposes receipt details without describing demo transport as a real settlement.
 - Persist a validated squad to SQLite, with server-side catalog, position, duplicate, availability, and budget checks.
 
 ## Hackathon technology mapping
@@ -101,6 +108,14 @@ Open http://localhost:3000. The frontend expects the backend at `http://localhos
 9. Watch the MCP/CCTP receipts; simulations are visibly labelled.
 10. Use **Execute Changes** to persist the final squad snapshot.
 
+### Regression tests
+
+The backend includes a no-network `unittest` suite covering the premium gate, x402 v2 challenge, replay-safe membership receipts, wallet/CCTP invariants, exact formation persistence, idempotent lineup application, transfer validation, Tournament HQ provenance, Matchday Brief provenance and Tactical Lab access. Run it from the repository root:
+
+```powershell
+backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -v
+```
+
 ## API
 
 | Method | Endpoint | Purpose |
@@ -108,8 +123,12 @@ Open http://localhost:3000. The frontend expects the backend at `http://localhos
 | `POST` | `/api/auth/register` | Create a manager |
 | `POST` | `/api/auth/login` | Get a JWT session |
 | `GET` | `/api/players` | Load the World Cup player catalog |
+| `GET` | `/api/players/{player_id}/intel` | Load one player’s source-aware Intel Card data and labelled model signals |
 | `GET` | `/api/players/meta` | Load roster snapshot date and FIFA source URLs |
 | `GET` | `/api/worldcup/snapshot` | Load dated FIFA semifinal fixtures and provenance |
+| `GET` | `/api/worldcup/tournament` | Load 48-team groups, fixtures, bracket and source-aware roster details |
+| `GET` | `/api/worldcup/matchday-brief` | Load a budget-valid, source-aware Matchday Brief |
+| `POST` | `/api/tactical-lab/compare` | Premium, non-mutating formation comparison |
 | `POST` | `/api/agent` | Chat with Gemini / fallback agent |
 | `GET` | `/api/access/status` | Read server-side membership, Match Pass, wallet and feature access |
 | `POST` | `/api/access/unlock` | Activate Kaan demo membership or process an x402 access purchase |
@@ -119,6 +138,7 @@ Open http://localhost:3000. The frontend expects the backend at `http://localhos
 | `POST` | `/api/squad/apply-lineup` | Apply a confirmed structured AI lineup |
 | `POST` | `/api/transfers/execute` | Validate and execute an MCP transfer |
 | `POST` | `/api/cctp` | Run the one-time CCTP backing flow |
+| `GET` | `/api/operations/recent` | Read the authenticated manager's durable action ledger |
 | `GET` | `/docs` | OpenAPI / Swagger documentation |
 
 ## Verification
@@ -138,6 +158,7 @@ The repository intentionally labels simulated CCTP/MCP paths in API responses an
 - The official x402 v2 flow is `402 Payment Required` → `PAYMENT-REQUIRED` → client-signed `PAYMENT-SIGNATURE` → facilitator verification/settlement → `PAYMENT-RESPONSE`. The local Kaan branch bypasses this only as an explicit zero-charge judge demo.
 - `X402_DEMO_MODE=true` does **not** unlock arbitrary users. Set `X402_ALLOW_SIMULATED_PURCHASES=true` only for a labelled presentation environment.
 - Real x402 deployment requires `X402_FACILITATOR_URL`, `X402_ASSET`, and a non-zero `X402_PAY_TO`; production use refuses zero token/receiver addresses. Access is granted only after facilitator verification **and settlement**.
+- Access grants, MCP lineup/transfer mutations and CCTP backing use a durable idempotency ledger. A completed receipt is replayed for the same `Idempotency-Key`; a key cannot be reused for a different payload. A simulated receipt is never represented as a chain settlement.
 - CCTP is accurately described as USDC burn → Circle attestation → destination mint. The included adapter remains visibly simulated until wallet signing and Circle configuration are provided.
 
 References: [Injective USDC + CCTP tutorial](https://docs.injective.network/developers-defi/usdc-cctp-tutorial), [Injective EVM network information](https://docs.injective.network/developers-evm/network-information), [x402 v2 flow](https://docs.cdp.coinbase.com/x402/core-concepts/how-it-works).

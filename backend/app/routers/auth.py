@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Header, status
 from pydantic import BaseModel, Field
 import hashlib
+import hmac
 import os
 import jwt
 import datetime
@@ -49,7 +50,7 @@ def verify_password(password: str, hashed: str) -> bool:
         salt_hex, hash_hex = hashed.split(':')
         salt = bytes.fromhex(salt_hex)
         db_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
-        return db_hash.hex() == hash_hex
+        return hmac.compare_digest(db_hash.hex(), hash_hex)
     except Exception:
         return False
 

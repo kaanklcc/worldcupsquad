@@ -12,6 +12,8 @@ from ..models import (
 )
 from ..data import get_players
 from ..access import require_ai_access
+from ..config import settings
+from ..operation_ledger import begin_operation, confirm_operation, fail_operation
 from .auth import decode_token
 
 router = APIRouter(prefix="/api/squad", tags=["squad"])
@@ -114,6 +116,35 @@ async def save_squad(req: SquadSaveRequest, user_id: int = Depends(get_current_u
 
         catalog = {player.id: player for player in get_players()}
         all_slots = [*req.squad, *req.bench]
+        expected_counts = FORMATION_COUNTS[req.formation]
+        if len(req.squad) != sum(expected_counts.values()):
+            raise HTTPException(
+                status_code=400,
+                detail=f"A {req.formation} squad must contain exactly {sum(expected_counts.values())} starting slots",
+            )
+        actual_counts = {position: 0 for position in expected_counts}
+        starting_keys = set()
+        for slot in req.squad:
+            if slot.slotIndex < 0:
+                raise HTTPException(status_code=400, detail="Slot indexes cannot be negative")
+            key = (slot.position, slot.slotIndex)
+            if key in starting_keys:
+                raise HTTPException(status_code=400, detail="Starting slots cannot be duplicated")
+            starting_keys.add(key)
+            actual_counts[slot.position] += 1
+        if actual_counts != expected_counts:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Starting slots do not match {req.formation}: {actual_counts}",
+            )
+        bench_keys = set()
+        for slot in req.bench:
+            if slot.slotIndex < 10:
+                raise HTTPException(status_code=400, detail="Bench slot indexes must start at 10")
+            key = (slot.position, slot.slotIndex)
+            if key in bench_keys:
+                raise HTTPException(status_code=400, detail="Bench slots cannot be duplicated")
+            bench_keys.add(key)
         selected_ids = [slot.player.id for slot in all_slots if slot.player]
 
         if len(selected_ids) != len(set(selected_ids)):
@@ -186,6 +217,7 @@ async def save_squad(req: SquadSaveRequest, user_id: int = Depends(get_current_u
 @router.post("/apply-lineup", response_model=LineupApplyResponse)
 async def apply_lineup(
     req: LineupApplyRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user_id: int = Depends(get_current_user_id),
 ):
     """Apply a confirmed AI lineup using catalog IDs only."""
@@ -225,19 +257,6 @@ async def apply_lineup(
         bench_players.append(player)
 
     total_cost = sum(player.price for player in [*starting_players, *bench_players])
-    from ..mcp.client import get_mcp_client
-    mcp_result = await get_mcp_client().call_tool(
-        "apply_lineup",
-        {
-            "formation": req.formation,
-            "starting_player_ids": req.startingPlayerIds,
-            "bench_player_ids": req.benchPlayerIds,
-            "reasoning": req.reasoning,
-        },
-    )
-    if not mcp_result.get("success"):
-        raise HTTPException(status_code=502, detail=mcp_result.get("error", "MCP lineup validation failed"))
-
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -250,34 +269,6 @@ async def apply_lineup(
                 status_code=400,
                 detail=f"Lineup cost ({total_cost:g}M) exceeds the {user_row['budget']:g}M budget",
             )
-
-        cursor.execute("UPDATE users SET formation = ? WHERE id = ?", (req.formation, user_id))
-        cursor.execute("DELETE FROM squad_slots WHERE user_id = ?", (user_id,))
-
-        position_indices = {position: 0 for position in counts}
-        for player in starting_players:
-            index = position_indices[player.position]
-            cursor.execute(
-                """
-                INSERT INTO squad_slots (user_id, position, slot_index, player_id, is_bench)
-                VALUES (?, ?, ?, ?, 0)
-                """,
-                (user_id, player.position, index, player.id),
-            )
-            position_indices[player.position] += 1
-
-        bench_indices = {"GK": 10, "DF": 10, "MF": 10, "FW": 10}
-        for player in bench_players:
-            index = bench_indices[player.position]
-            cursor.execute(
-                """
-                INSERT INTO squad_slots (user_id, position, slot_index, player_id, is_bench)
-                VALUES (?, ?, ?, ?, 1)
-                """,
-                (user_id, player.position, index, player.id),
-            )
-            bench_indices[player.position] += 1
-        conn.commit()
     except HTTPException:
         conn.rollback()
         raise
@@ -287,11 +278,95 @@ async def apply_lineup(
     finally:
         conn.close()
 
-    return LineupApplyResponse(
-        success=True,
-        message=f"{req.formation} AI lineup applied after explicit confirmation.",
-        formation=req.formation,
-        appliedPlayerIds=all_ids,
-        mcpReceipt=mcp_result,
-        simulated=mcp_result.get("simulated", False),
+    operation, replay = begin_operation(
+        user_id=user_id,
+        action_type="apply_lineup",
+        provider="mcp",
+        network=settings.x402_network,
+        idempotency_key=idempotency_key,
+        payload={
+            "formation": req.formation,
+            "startingPlayerIds": req.startingPlayerIds,
+            "benchPlayerIds": req.benchPlayerIds,
+            "reasoning": req.reasoning,
+            "budget": total_cost,
+        },
     )
+    if replay:
+        if operation["status"] == "confirmed" and operation["receipt"]:
+            return LineupApplyResponse(**operation["receipt"], operation=operation)
+        raise HTTPException(status_code=409, detail=f"Lineup operation is {operation['status']}; create a new intent to retry")
+
+    try:
+        # The action intent is now durable. A retry with the same key returns
+        # its receipt instead of replaying an MCP mutation.
+        from ..mcp.client import get_mcp_client
+        mcp_result = await get_mcp_client().call_tool(
+            "apply_lineup",
+            {
+                "formation": req.formation,
+                "starting_player_ids": req.startingPlayerIds,
+                "bench_player_ids": req.benchPlayerIds,
+                "reasoning": req.reasoning,
+            },
+        )
+        if not mcp_result.get("success"):
+            raise HTTPException(status_code=502, detail=mcp_result.get("error", "MCP lineup validation failed"))
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE users SET formation = ? WHERE id = ?", (req.formation, user_id))
+            cursor.execute("DELETE FROM squad_slots WHERE user_id = ?", (user_id,))
+
+            position_indices = {position: 0 for position in counts}
+            for player in starting_players:
+                index = position_indices[player.position]
+                cursor.execute(
+                    """
+                    INSERT INTO squad_slots (user_id, position, slot_index, player_id, is_bench)
+                    VALUES (?, ?, ?, ?, 0)
+                    """,
+                    (user_id, player.position, index, player.id),
+                )
+                position_indices[player.position] += 1
+
+            bench_indices = {"GK": 10, "DF": 10, "MF": 10, "FW": 10}
+            for player in bench_players:
+                index = bench_indices[player.position]
+                cursor.execute(
+                    """
+                    INSERT INTO squad_slots (user_id, position, slot_index, player_id, is_bench)
+                    VALUES (?, ?, ?, ?, 1)
+                    """,
+                    (user_id, player.position, index, player.id),
+                )
+                bench_indices[player.position] += 1
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+        response_payload = {
+            "success": True,
+            "message": f"{req.formation} AI lineup applied after explicit confirmation.",
+            "formation": req.formation,
+            "appliedPlayerIds": all_ids,
+            "mcpReceipt": mcp_result,
+            "simulated": mcp_result.get("simulated", False),
+        }
+        confirmed = confirm_operation(
+            operation["operationId"],
+            receipt=response_payload,
+            tx_hash=mcp_result.get("tx_hash"),
+            simulated=mcp_result.get("simulated", False),
+        )
+        return LineupApplyResponse(**response_payload, operation=confirmed)
+    except HTTPException as error:
+        fail_operation(operation["operationId"], str(error.detail))
+        raise
+    except Exception as error:
+        fail_operation(operation["operationId"], str(error))
+        raise HTTPException(status_code=500, detail=f"Failed to apply lineup: {error}")

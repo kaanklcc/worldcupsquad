@@ -1,7 +1,8 @@
 """
 POST /api/transfers/execute - Execute a transfer via MCP.
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
+from typing import Optional
 
 from ..models import TransferExecuteRequest, TransferExecuteResponse
 from ..mcp.client import get_mcp_client
@@ -9,6 +10,8 @@ from ..data import get_players
 from .squads import get_current_user_id
 from ..db import get_db_connection
 from ..access import require_ai_access
+from ..config import settings
+from ..operation_ledger import begin_operation, confirm_operation, fail_operation
 
 
 router = APIRouter()
@@ -17,6 +20,7 @@ router = APIRouter()
 @router.post("/api/transfers/execute", response_model=TransferExecuteResponse)
 async def execute_transfer(
     request: TransferExecuteRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user_id: int = Depends(get_current_user_id)
 ):
     """
@@ -46,7 +50,9 @@ async def execute_transfer(
             detail=f"Player {buy_player.name} is not available for selection"
         )
 
-    squad_ids = list(dict.fromkeys(request.squadPlayerIds))
+    squad_ids = request.squadPlayerIds
+    if len(squad_ids) != len(set(squad_ids)):
+        raise HTTPException(status_code=400, detail="The current squad cannot contain duplicate player IDs")
     if request.sellPlayerId not in squad_ids:
         raise HTTPException(status_code=400, detail="The player being sold is not in the current squad")
     if request.buyPlayerId in squad_ids:
@@ -60,6 +66,13 @@ async def execute_transfer(
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM squad_slots WHERE user_id = ? AND player_id = ? LIMIT 1",
+        (user_id, request.sellPlayerId),
+    )
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="The player being sold is not persisted in the current squad")
     cursor.execute("SELECT budget FROM users WHERE id = ?", (user_id,))
     user_row = cursor.fetchone()
     if not user_row:
@@ -72,6 +85,25 @@ async def execute_transfer(
         conn.close()
         raise HTTPException(status_code=400, detail="Transfer would exceed the squad budget")
     conn.close()
+
+    operation, replay = begin_operation(
+        user_id=user_id,
+        action_type="execute_transfer",
+        provider="mcp",
+        network=settings.x402_network,
+        idempotency_key=idempotency_key,
+        payload={
+            "sellPlayerId": request.sellPlayerId,
+            "buyPlayerId": request.buyPlayerId,
+            "squadPlayerIds": request.squadPlayerIds,
+            "reasoning": request.reasoning,
+            "projectedCost": replacement_cost,
+        },
+    )
+    if replay:
+        if operation["status"] == "confirmed" and operation["receipt"]:
+            return TransferExecuteResponse(**operation["receipt"], operation=operation)
+        raise HTTPException(status_code=409, detail=f"Transfer operation is {operation['status']}; create a new intent to retry")
 
     try:
         # Call MCP server's apply_transfer tool
@@ -117,20 +149,29 @@ async def execute_transfer(
                 raise HTTPException(status_code=500, detail=f"Database logging failed: {str(db_err)}")
             conn.close()
 
-            return TransferExecuteResponse(
-                success=True,
-                txHash=result["tx_hash"],
-                message=(
+            response_payload = {
+                "success": True,
+                "txHash": result["tx_hash"],
+                "message": (
                     f"Transfer executed successfully via MCP: "
                     f"Sold {sell_player.name} → Bought {buy_player.name}"
                 ),
-                mcpReceipt=result,
-                simulated=result.get("simulated", False)
+                "mcpReceipt": result,
+                "simulated": result.get("simulated", False),
+            }
+            confirmed = confirm_operation(
+                operation["operationId"],
+                receipt=response_payload,
+                tx_hash=result["tx_hash"],
+                simulated=result.get("simulated", False),
             )
+            return TransferExecuteResponse(**response_payload, operation=confirmed)
         else:
             raise HTTPException(status_code=500, detail=result.get("error", "Transfer failed"))
 
-    except HTTPException:
+    except HTTPException as error:
+        fail_operation(operation["operationId"], str(error.detail))
         raise
     except Exception as e:
+        fail_operation(operation["operationId"], str(e))
         raise HTTPException(status_code=500, detail=f"Transfer execution error: {str(e)}")

@@ -9,6 +9,8 @@ from ..cctp_flow import get_cctp_flow
 from .squads import get_current_user_id
 from ..db import get_db_connection
 from ..access import require_membership, validate_wallet
+from ..config import settings
+from ..operation_ledger import begin_operation, confirm_operation, fail_operation
 
 
 router = APIRouter()
@@ -18,6 +20,7 @@ router = APIRouter()
 async def bridge_usdc(
     request: CCTPRequest,
     x_payment: Optional[str] = Header(None, alias="X-Payment"),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user_id: int = Depends(get_current_user_id)
 ):
     """
@@ -29,7 +32,9 @@ async def bridge_usdc(
         raise HTTPException(status_code=400, detail="Wallet address is required")
 
     wallet_address = validate_wallet(request.walletAddress)
-    if access.get("walletAddress") and access["walletAddress"] != wallet_address:
+    if not access.get("walletAddress"):
+        raise HTTPException(status_code=400, detail="Save an Injective wallet in your membership profile before using CCTP")
+    if access["walletAddress"] != wallet_address:
         raise HTTPException(status_code=400, detail="CCTP wallet must match the wallet saved in your membership profile")
 
     if request.amount != 20:
@@ -49,7 +54,25 @@ async def bridge_usdc(
 
         if not user_row:
             raise HTTPException(status_code=404, detail="User not found")
+
+        operation, replay = begin_operation(
+            user_id=user_id,
+            action_type="acquire_cctp_backing",
+            provider="cctp",
+            network=settings.x402_network,
+            idempotency_key=idempotency_key,
+            payload={
+                "walletAddress": wallet_address,
+                "amount": request.amount,
+                "sourceChain": request.sourceChain,
+            },
+        )
+        if replay:
+            if operation["status"] == "confirmed" and operation["receipt"]:
+                return CCTPResponse(**operation["receipt"], operation=operation)
+            raise HTTPException(status_code=409, detail=f"CCTP operation is {operation['status']}; create a new intent to retry")
         if user_row["cctp_used"]:
+            fail_operation(operation["operationId"], "CCTP backing has already been acquired")
             raise HTTPException(status_code=409, detail="CCTP backing has already been acquired")
 
         cctp = get_cctp_flow()
@@ -98,17 +121,28 @@ async def bridge_usdc(
                 raise HTTPException(status_code=500, detail=f"Database update failed: {str(db_err)}")
             conn.close()
 
-            return CCTPResponse(
-                success=True,
-                newBudgetBonus=request.amount,
-                txHash=result["final_tx_hash"],
-                message=result["message"],
-                simulated=result.get("simulated", False)
+            response_payload = {
+                "success": True,
+                "newBudgetBonus": request.amount,
+                "txHash": result["final_tx_hash"],
+                "message": result["message"],
+                "simulated": result.get("simulated", False),
+            }
+            confirmed = confirm_operation(
+                operation["operationId"],
+                receipt=response_payload,
+                tx_hash=result["final_tx_hash"],
+                simulated=result.get("simulated", False),
             )
+            return CCTPResponse(**response_payload, operation=confirmed)
         else:
             raise HTTPException(status_code=500, detail="CCTP bridge failed")
 
-    except HTTPException:
+    except HTTPException as error:
+        if "operation" in locals():
+            fail_operation(operation["operationId"], str(error.detail))
         raise
     except Exception as e:
+        if "operation" in locals():
+            fail_operation(operation["operationId"], str(e))
         raise HTTPException(status_code=500, detail=f"CCTP bridge error: {str(e)}")

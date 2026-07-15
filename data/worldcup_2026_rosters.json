@@ -1,12 +1,12 @@
 {
   "tournament": "FIFA World Cup 2026",
   "snapshotDate": "2026-07-15",
-  "dataSource": "FIFA World Cup 2026 squad announcement pages",
+  "dataSource": "FIFA World Cup 2026 official squad announcements",
   "sourceUrls": {
-    "Argentina": "https://www.fifa.com/en/articles/argentina-squad-announced",
-    "England": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/england-squad-named-thomas-tuchel",
-    "France": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/france-world-cup-squad-named",
-    "Spain": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/spain-squad-announcement-luis-de-la-fuente"
+    "Argentina": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/all-world-cup-squad-announcements",
+    "England": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/all-world-cup-squad-announcements",
+    "France": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/all-world-cup-squad-announcements",
+    "Spain": "https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/all-world-cup-squad-announcements"
   },
   "teams": {
     "Argentina": {

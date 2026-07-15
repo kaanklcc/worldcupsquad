@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { AccessStatus } from '@/types';
 
 interface HeaderProps {
@@ -41,6 +42,10 @@ export default function Header({
 
       {/* Right section */}
       <div className="flex items-center gap-6">
+        <div className="hidden lg:flex items-center gap-1">
+          <Link href="/tournament" className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant transition hover:bg-surface-container-high hover:text-primary">HQ</Link>
+          <Link href="/transactions" className="rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant transition hover:bg-surface-container-high hover:text-primary">Ledger</Link>
+        </div>
         <button
           onClick={onAccessClick}
           className={`hidden md:flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition ${
