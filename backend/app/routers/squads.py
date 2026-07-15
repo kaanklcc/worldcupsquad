@@ -11,6 +11,7 @@ from ..models import (
     LineupApplyResponse,
 )
 from ..data import get_players
+from ..access import require_ai_access
 from .auth import decode_token
 
 router = APIRouter(prefix="/api/squad", tags=["squad"])
@@ -188,6 +189,7 @@ async def apply_lineup(
     user_id: int = Depends(get_current_user_id),
 ):
     """Apply a confirmed AI lineup using catalog IDs only."""
+    require_ai_access(user_id)
     counts = FORMATION_COUNTS[req.formation]
     catalog = {player.id: player for player in get_players()}
     all_ids = [*req.startingPlayerIds, *req.benchPlayerIds]

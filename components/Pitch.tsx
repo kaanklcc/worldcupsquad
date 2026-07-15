@@ -466,7 +466,7 @@ export default function Pitch({
           <span className="material-symbols-outlined text-sm text-primary">grid_view</span>
           DIZILIŞ:
         </span>
-        {['4-3-3', '4-4-2', '4-2-3-1', '4-5-1', '3-4-3', '3-5-2', '6-3-1'].map((form) => (
+        {['4-3-3', '4-4-2', '4-2-3-1', '3-5-2', '5-3-2'].map((form) => (
           <button
             key={form}
             onClick={() => onChangeFormation(form)}

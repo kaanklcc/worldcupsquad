@@ -5,6 +5,9 @@ interface ChatPanelProps {
   messages: ChatMessage[];
   onSendMessage: (prompt: string, isPremium: boolean) => void;
   onApproveAction: (action: SuggestedAction) => void;
+  onRejectAction: (action: SuggestedAction) => void;
+  onUnlockAccess: () => void;
+  hasAiAccess: boolean;
   isLoading: boolean;
   actionLoading: boolean;
   pendingAction: SuggestedAction | null;
@@ -17,6 +20,9 @@ export default function ChatPanel({
   messages,
   onSendMessage,
   onApproveAction,
+  onRejectAction,
+  onUnlockAccess,
+  hasAiAccess,
   isLoading,
   actionLoading,
   pendingAction,
@@ -32,8 +38,14 @@ export default function ChatPanel({
   const handleSendFree = () => {
     if (!input.trim()) return;
     const confirmation = /^(yes|yeah|yep|evet|olur|uygula|tamam|apply|onayla)\b/i.test(input.trim());
+    const rejection = /^(no|nope|hayır|hayir|reddet|vazgeç|vazgec|iptal|cancel)\b/i.test(input.trim());
     if (pendingAction && confirmation) {
       onApproveAction(pendingAction);
+      setInput('');
+      return;
+    }
+    if (pendingAction && rejection) {
+      onRejectAction(pendingAction);
       setInput('');
       return;
     }
@@ -42,7 +54,11 @@ export default function ChatPanel({
   };
 
   const handleSendPremium = () => {
-    const promptText = input.trim() || 'Analyse my squad and suggest the best transfer';
+    if (!hasAiAccess) {
+      onUnlockAccess();
+      return;
+    }
+    const promptText = input.trim() || 'Run Deep Tactical Analytics on my current squad. Respect the selected formation and budget. Evaluate positional balance, verified World Cup 2026 goals and assists where available, model xG estimates, availability, clean-sheet potential and price efficiency. Identify the three weakest tactical points, then return one budget-valid transfer or a complete executable lineup only when it materially improves the squad. Clearly distinguish verified facts from model estimates.';
     onSendMessage(promptText, true);
     setInput('');
   };
@@ -97,9 +113,9 @@ export default function ChatPanel({
                 )}
                 {msg.role === 'assistant' && msg.provider && (
                   <div className={`text-[9px] font-bold tracking-wider mb-1 ${
-                    msg.provider === 'gemini' ? 'text-emerald-400' : 'text-amber-400'
+                    msg.provider === 'gemini' ? 'text-emerald-400' : msg.provider === 'locked' ? 'text-rose-300' : 'text-amber-400'
                   }`}>
-                    {msg.provider === 'gemini' ? 'GEMINI LIVE' : 'STATIC FALLBACK'}
+                    {msg.provider === 'gemini' ? 'GEMINI LIVE' : msg.provider === 'locked' ? 'MEMBERSHIP REQUIRED' : 'STATIC FALLBACK'}
                   </div>
                 )}
                 <p
@@ -184,14 +200,24 @@ export default function ChatPanel({
               </div>
             </div>
 
-            <button
-              onClick={() => onApproveAction(pendingAction)}
-              disabled={actionLoading}
-              className="w-full emerald-gradient font-display-lg text-body-md uppercase text-on-primary py-3 rounded-sm shadow-lg hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait"
-            >
-              <span className="material-symbols-outlined">{actionLoading ? 'sync' : 'check_circle'}</span>
-              {actionLoading ? 'EXECUTING VIA MCP...' : 'CONFIRM TACTICAL CHANGE'}
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onRejectAction(pendingAction)}
+                disabled={actionLoading}
+                className="flex items-center justify-center gap-1 rounded-sm border border-red-400/40 bg-red-500/10 py-3 font-display-lg text-xs uppercase text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-base">cancel</span>
+                Reject
+              </button>
+              <button
+                onClick={() => onApproveAction(pendingAction)}
+                disabled={actionLoading}
+                className="emerald-gradient flex items-center justify-center gap-1 rounded-sm py-3 font-display-lg text-xs uppercase text-on-primary shadow-lg transition-all hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+              >
+                <span className="material-symbols-outlined text-base">{actionLoading ? 'sync' : 'check_circle'}</span>
+                {actionLoading ? 'EXECUTING...' : 'CONFIRM CHANGE'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -206,7 +232,7 @@ export default function ChatPanel({
             <p className="text-xs text-on-surface-variant mb-3">
               Formation: <strong>{pendingAction.formation}</strong>
               {pendingAction.budgetUsed !== undefined && (
-                <> · Budget: <strong>{pendingAction.budgetUsed.toFixed(1)}M / 100M</strong></>
+                <> · Budget: <strong>{pendingAction.budgetUsed.toFixed(1)}M / {pendingAction.maxBudget ?? 100}M</strong></>
               )}
             </p>
             <div className="flex flex-wrap gap-1.5 mb-4">
@@ -219,14 +245,24 @@ export default function ChatPanel({
             <p className="text-[11px] text-on-surface-variant/80 mb-4 leading-relaxed">
               {pendingAction.reasoning}
             </p>
-            <button
-              onClick={() => onApproveAction(pendingAction)}
-              disabled={actionLoading}
-              className="w-full emerald-gradient font-display-lg text-body-md uppercase text-on-primary py-3 rounded-sm shadow-lg hover:brightness-110 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait"
-            >
-              <span className="material-symbols-outlined">{actionLoading ? 'sync' : 'check_circle'}</span>
-              {actionLoading ? 'APPLYING LINEUP...' : 'APPLY AI LINEUP'}
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onRejectAction(pendingAction)}
+                disabled={actionLoading}
+                className="flex items-center justify-center gap-1 rounded-sm border border-red-400/40 bg-red-500/10 py-3 font-display-lg text-xs uppercase text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-base">cancel</span>
+                Reject
+              </button>
+              <button
+                onClick={() => onApproveAction(pendingAction)}
+                disabled={actionLoading}
+                className="emerald-gradient flex items-center justify-center gap-1 rounded-sm py-3 font-display-lg text-xs uppercase text-on-primary shadow-lg transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+              >
+                <span className="material-symbols-outlined text-base">{actionLoading ? 'sync' : 'check_circle'}</span>
+                {actionLoading ? 'APPLYING...' : 'APPLY LINEUP'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -267,7 +303,7 @@ export default function ChatPanel({
           >
             menu_book
           </span>
-          UNLOCK DEEP TACTICAL ANALYTICS
+          {hasAiAccess ? 'RUN DEEP TACTICAL ANALYTICS' : 'UNLOCK DEEP TACTICAL ANALYTICS'}
         </button>
       </div>
     </aside>

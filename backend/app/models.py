@@ -67,6 +67,7 @@ class SuggestedAction(BaseModel):
     startingPlayerIds: Optional[List[str]] = None
     benchPlayerIds: Optional[List[str]] = None
     budgetUsed: Optional[float] = None
+    maxBudget: Optional[float] = None
     totalPoints: Optional[int] = None
     strategy: Optional[Literal['balanced', 'attacking', 'defensive']] = None
     reasoning: str
@@ -77,8 +78,11 @@ class AgentResponse(BaseModel):
     suggestedAction: Optional[SuggestedAction] = None
     isPremium: bool
     paymentVerified: bool = False  # x402 verification status
-    provider: Literal['gemini', 'fallback'] = 'fallback'
+    provider: Literal['gemini', 'fallback', 'locked'] = 'fallback'
     model: Optional[str] = None
+    accessRequired: bool = False
+    membershipActive: bool = False
+    accessSource: Optional[str] = None
 
 
 class AgentRequest(BaseModel):

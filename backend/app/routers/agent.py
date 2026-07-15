@@ -1,12 +1,12 @@
 """
-POST /api/agent - AI-powered football consultant with x402 payment gating.
+POST /api/agent - membership/x402-gated AI football consultant.
 """
-from fastapi import APIRouter, HTTPException, Header, Request, Depends
-from typing import Optional
+from fastapi import APIRouter, HTTPException, Request, Depends
 
 from ..models import AgentRequest, AgentResponse
 from ..agent.gemini_client import get_agent_client
-from ..x402 import get_x402_verifier
+from ..access import LOCKED_CAPABILITIES_MESSAGE, get_access_status
+from ..db import get_db_connection
 from .squads import get_current_user_id
 
 
@@ -16,32 +16,11 @@ router = APIRouter()
 @router.post("/api/agent", response_model=AgentResponse)
 async def chat_with_agent(
     request: Request,
-    x_payment: Optional[str] = Header(None, alias="X-Payment"),
-    x_payment_receipt: Optional[str] = Header(None, alias="X-Payment-Receipt"),
     user_id: int = Depends(get_current_user_id)
 ):
     """
-    Chat with the Auto-Gaffer AI consultant.
-
-    This endpoint:
-    1. Verifies x402 payment receipt for premium access
-    2. Calls the Gemini LLM with tool-calling capabilities
-    3. Returns tactical advice, player analysis, or transfer suggestions
-
-    **Free Tier:**
-    - Basic player information
-    - General squad overview
-    - Position rankings
-
-    **Premium Tier (via x402):**
-    - Deep scouting reports with xG data
-    - Injury risk analysis
-    - AI-powered transfer suggestions with executable actions
-    - Advanced squad diagnostics
-
-    The agent uses Gemini function-calling to invoke skills like:
-    - search_player, rank_position, analyze_squad
-    - suggest_transfer, validate_budget, get_player_report
+    Chat with Auto-Gaffer. No prompt is sent to Gemini before a server-side
+    membership or x402 Match Pass has been activated.
     """
     try:
         body = await request.json()
@@ -53,32 +32,42 @@ async def chat_with_agent(
     if not agent_request.prompt or agent_request.prompt.strip() == "":
         raise HTTPException(status_code=400, detail="Prompt is required")
 
-    try:
-        # Verify x402 payment for premium access
-        verifier = get_x402_verifier()
-        x402_verified = await verifier.verify_premium_access(
-            has_paid_x402=agent_request.hasPaidX402,
-            receipt=x_payment_receipt,
-            payment_header=x_payment
+    access = get_access_status(user_id)
+    if not access["hasAiAccess"]:
+        return AgentResponse(
+            message=LOCKED_CAPABILITIES_MESSAGE,
+            suggestedAction=None,
+            isPremium=False,
+            paymentVerified=False,
+            provider="locked",
+            accessRequired=True,
+            membershipActive=False,
         )
 
-        # Determine access level
-        # The verified receipt/header is authoritative. The body flag is only
-        # useful in local demo mode where the frontend has no wallet adapter.
-        is_premium = x402_verified
+    conn = get_db_connection()
+    user_row = conn.execute("SELECT budget FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+    max_budget = float(user_row["budget"])
 
+    try:
         # Get agent client and process the request
         agent_client = get_agent_client()
         response = await agent_client.chat(
             prompt=agent_request.prompt,
             squad_player_ids=agent_request.squadPlayerIds,
-            is_premium=is_premium,
-            x402_verified=x402_verified,
+            is_premium=True,
+            x402_verified=access["accessSource"] == "x402_verified",
             formation=agent_request.formation,
+            max_budget=max_budget,
         )
 
-        # Ensure payment status is reflected in the response
-        response.paymentVerified = x402_verified
+        response.isPremium = True
+        response.paymentVerified = access["accessSource"] == "x402_verified"
+        response.accessRequired = False
+        response.membershipActive = access["membershipActive"]
+        response.accessSource = access["accessSource"]
 
         return response
 

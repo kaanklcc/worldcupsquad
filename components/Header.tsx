@@ -1,11 +1,15 @@
 'use client';
 
+import type { AccessStatus } from '@/types';
+
 interface HeaderProps {
   budget: number;
   maxBudget: number;
   onAcquireBacking: () => void;
   cctpLoading: boolean;
   cctpUsed: boolean;
+  accessStatus: AccessStatus | null;
+  onAccessClick: () => void;
 }
 
 export default function Header({
@@ -14,7 +18,15 @@ export default function Header({
   onAcquireBacking,
   cctpLoading,
   cctpUsed,
+  accessStatus,
+  onAccessClick,
 }: HeaderProps) {
+  const wallet = accessStatus?.walletAddress;
+  const walletLabel = wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : 'Connect wallet';
+  const accessLabel = accessStatus?.membershipActive
+    ? accessStatus.membershipTier === 'demo_pro' ? 'Demo Pro' : 'Pro Member'
+    : accessStatus?.accessPassActive ? 'Match Pass' : 'Membership Locked';
+
   return (
     <nav className="bg-surface-dim/90 backdrop-blur-xl docked full-width top-0 z-50 border-b border-outline-variant/20 shadow-[0_2px_15px_rgba(0,0,0,0.05)] flex justify-between items-center px-6 md:px-12 py-3 w-full flex-shrink-0">
       {/* Left section */}
@@ -29,6 +41,21 @@ export default function Header({
 
       {/* Right section */}
       <div className="flex items-center gap-6">
+        <button
+          onClick={onAccessClick}
+          className={`hidden md:flex items-center gap-2 rounded-full border px-3 py-1.5 text-left transition ${
+            accessStatus?.hasAiAccess
+              ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+              : 'border-amber-400/30 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20'
+          }`}
+        >
+          <span className="material-symbols-outlined text-base">{accessStatus?.hasAiAccess ? 'verified' : 'lock'}</span>
+          <span className="flex flex-col">
+            <span className="text-[9px] font-bold uppercase tracking-wider">{accessLabel}</span>
+            <span className="text-[9px] text-slate-400">{walletLabel}</span>
+          </span>
+        </button>
+
         {/* Wallet pill */}
         <div className="glass-panel px-4 py-1.5 rounded-full flex items-center gap-3">
           <div className="flex flex-col items-end">
@@ -54,7 +81,7 @@ export default function Header({
               : 'hover:brightness-110'
           }`}
         >
-          {cctpLoading ? 'PROCESSING...' : cctpUsed ? '✓ BACKING ACQUIRED' : 'ACQUIRE BACKING'}
+          {cctpLoading ? 'PROCESSING...' : cctpUsed ? '✓ BACKING ACQUIRED' : accessStatus?.hasFinanceAccess ? 'ACQUIRE BACKING' : 'UNLOCK FINANCE'}
         </button>
 
         {/* Icons area */}

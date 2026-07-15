@@ -8,6 +8,7 @@ from ..models import CCTPRequest, CCTPResponse
 from ..cctp_flow import get_cctp_flow
 from .squads import get_current_user_id
 from ..db import get_db_connection
+from ..access import require_membership, validate_wallet
 
 
 router = APIRouter()
@@ -22,9 +23,14 @@ async def bridge_usdc(
     """
     Bridge USDC from source chain (default: Ethereum) to Injective using CCTP.
     """
+    access = require_membership(user_id)
     # Validate inputs
     if not request.walletAddress or request.walletAddress.strip() == "":
         raise HTTPException(status_code=400, detail="Wallet address is required")
+
+    wallet_address = validate_wallet(request.walletAddress)
+    if access.get("walletAddress") and access["walletAddress"] != wallet_address:
+        raise HTTPException(status_code=400, detail="CCTP wallet must match the wallet saved in your membership profile")
 
     if request.amount != 20:
         raise HTTPException(status_code=400, detail="Amount must be exactly 20 USDC")
@@ -50,7 +56,7 @@ async def bridge_usdc(
         
         # Perform the bridge (real or simulated)
         result = await cctp.real_bridge(
-            wallet_address=request.walletAddress,
+            wallet_address=wallet_address,
             amount=request.amount,
             source_chain=request.sourceChain
         )
@@ -79,7 +85,7 @@ async def bridge_usdc(
                     INSERT INTO cctp_transactions (user_id, wallet_address, amount, source_chain, tx_hash)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (user_id, request.walletAddress, request.amount, request.sourceChain, result["final_tx_hash"])
+                    (user_id, wallet_address, request.amount, request.sourceChain, result["final_tx_hash"])
                 )
                 conn.commit()
             except HTTPException:

@@ -229,9 +229,14 @@ def analyze_squad(squad_player_ids: List[str]) -> dict:
 
 
 @gemini_tool
-def suggest_transfer(squad_player_ids: List[str], target_position: Optional[Literal['GK', 'DF', 'MF', 'FW']] = None) -> dict:
+def suggest_transfer(
+    squad_player_ids: List[str],
+    target_position: Optional[Literal['GK', 'DF', 'MF', 'FW']] = None,
+    max_budget: float = 100,
+) -> dict:
     """
-    Suggest the best transfer (sell weakest, buy strongest available) for a squad. Optionally target a specific position.
+    Suggest a budget-valid transfer using fantasy points, verified World Cup
+    contributions, model xG, injury risk and price efficiency.
 
     Args:
         squad_player_ids: List of player IDs in the current squad
@@ -250,7 +255,7 @@ def suggest_transfer(squad_player_ids: List[str], target_position: Optional[Lite
     if not available_players:
         return {"error": "Cannot suggest transfer: no available players"}
     
-    # Filter by position if specified
+    # Filter by position if specified.
     if target_position:
         candidates = [p for p in squad_players if p.position == target_position]
         if not candidates:
@@ -263,22 +268,64 @@ def suggest_transfer(squad_player_ids: List[str], target_position: Optional[Lite
     if not replacements:
         return {"error": f"No available replacements for position(s)"}
     
-    # Find weakest in squad (by points)
-    weakest = min(candidates, key=lambda p: p.points)
-    
-    # Find best available replacement at same position
-    position_replacements = [p for p in replacements if p.position == weakest.position]
-    if not position_replacements:
-        return {"error": f"No available replacements for position {weakest.position}"}
-    
-    best_replacement = max(position_replacements, key=lambda p: p.points)
-    
-    # Only suggest if replacement is actually better
-    if best_replacement.points <= weakest.points:
-        return {"message": "Squad is already optimized - no clear upgrade available"}
-    
-    price_diff = best_replacement.price - weakest.price
-    xg_diff = best_replacement.premium_stats.xg_per_game - weakest.premium_stats.xg_per_game
+    current_cost = sum(player.price for player in squad_players)
+    risk_penalty = {'Low': 0.0, 'Medium': 1.5, 'High': 4.0}
+
+    def transfer_score(player: Player) -> float:
+        return (
+            player.points
+            + _verified_contribution_score(player) * 1.5
+            + player.premium_stats.xg_per_game * (8.0 if player.position in {'MF', 'FW'} else 2.0)
+            - risk_penalty[player.premium_stats.injury_risk]
+        )
+
+    options = []
+    for sell_player in candidates:
+        for buy_player in replacements:
+            if buy_player.position != sell_player.position:
+                continue
+            projected_cost = current_cost - sell_player.price + buy_player.price
+            if projected_cost > max_budget:
+                continue
+            score_gain = transfer_score(buy_player) - transfer_score(sell_player)
+            points_gain = buy_player.points - sell_player.points
+            xg_gain = buy_player.premium_stats.xg_per_game - sell_player.premium_stats.xg_per_game
+            verified_gain = _verified_contribution_score(buy_player) - _verified_contribution_score(sell_player)
+            price_change = buy_player.price - sell_player.price
+            # Prefer material football upgrades, with a small bonus for saving
+            # budget. This avoids repeatedly replacing only the cheapest/lowest
+            # points player when a different position has the stronger gain.
+            option_score = score_gain + max(-price_change, 0) * 0.25
+            if option_score <= 0.5:
+                continue
+            options.append({
+                'sell': sell_player,
+                'buy': buy_player,
+                'option_score': option_score,
+                'points_gain': points_gain,
+                'xg_gain': xg_gain,
+                'verified_gain': verified_gain,
+                'price_change': price_change,
+                'projected_cost': projected_cost,
+            })
+
+    if not options:
+        return {"message": "Squad is already optimized within the current budget - no clear upgrade available"}
+
+    options.sort(
+        key=lambda option: (
+            option['option_score'],
+            option['verified_gain'],
+            option['points_gain'],
+            -option['price_change'],
+        ),
+        reverse=True,
+    )
+    selected = options[0]
+    weakest = selected['sell']
+    best_replacement = selected['buy']
+    price_diff = selected['price_change']
+    xg_diff = selected['xg_gain']
     
     price_diff_text = (
         f"+{price_diff}M" if price_diff > 0 else
@@ -292,12 +339,25 @@ def suggest_transfer(squad_player_ids: List[str], target_position: Optional[Lite
         "points_upgrade": best_replacement.points - weakest.points,
         "price_change": price_diff,
         "xg_improvement": round(xg_diff, 2),
+        "projected_budget": round(selected['projected_cost'], 1),
+        "max_budget": max_budget,
+        "alternatives": [
+            {
+                "sell_player_id": option['sell'].id,
+                "buy_player_id": option['buy'].id,
+                "points_upgrade": option['points_gain'],
+                "price_change": round(option['price_change'], 1),
+                "projected_budget": round(option['projected_cost'], 1),
+            }
+            for option in options[1:3]
+        ],
         "reasoning": (
             f"Sell {weakest.name} ({weakest.points} pts, {weakest.price}M) → "
             f"Buy {best_replacement.name} ({best_replacement.points} pts, {best_replacement.price}M). "
             f"+{best_replacement.points - weakest.points} points upgrade. "
             f"Price: {price_diff_text}. "
-            f"xG improvement: {round(xg_diff, 2)} per game. "
+            f"Projected squad budget: {round(selected['projected_cost'], 1)}M / {max_budget:g}M. "
+            f"Model xG change: {round(xg_diff, 2)} per game (application estimate, not an official FIFA stat). "
             f"{best_replacement.premium_stats.scout_note}"
         )
     }
@@ -374,6 +434,7 @@ def suggest_lineup(
     strategy: Literal['balanced', 'attacking', 'defensive'] = 'balanced',
     position_team_preferences: Optional[Dict[str, List[str]]] = None,
     current_squad_player_ids: Optional[List[str]] = None,
+    max_budget: float = 100,
 ) -> dict:
     """Build a budget-valid World Cup 2026 starting XI with stable player IDs.
 
@@ -383,7 +444,8 @@ def suggest_lineup(
     Explicitly requested players are always included when they are available.
     ``position_team_preferences`` can focus a position on a team, while
     ``strategy`` uses verified World Cup contributions and app fantasy values
-    to balance attacking or defensive priorities within the same 100M budget.
+    to balance attacking or defensive priorities within the authenticated
+    manager's current server-side budget.
     """
     formation_counts = {
         '4-3-3': {'GK': 1, 'DF': 4, 'MF': 3, 'FW': 3},
@@ -497,7 +559,7 @@ def suggest_lineup(
             return {'error': f'Not enough available {position} players for {formation}'}
 
     # Dynamic programming over position groups finds the highest-rated XI that
-    # still fits the app's authoritative 100M default budget.
+    # still fits the authenticated manager's authoritative budget.
     # cost -> (optimization score, actual points, players)
     states = {0: (0, 0, [])}
     for position, count in formation_counts[formation].items():
@@ -520,7 +582,7 @@ def suggest_lineup(
         for current_cost, (current_score, current_points, current_players) in states.items():
             for option_cost, option_score, option_points, option_players in options:
                 total_cost = current_cost + option_cost
-                if total_cost > 1000:
+                if total_cost > round(max_budget * 10):
                     continue
                 total_score = current_score + option_score
                 total_points = current_points + option_points
@@ -555,6 +617,7 @@ def suggest_lineup(
         'starting_player_ids': lineup_ids,
         'starting_players': [player.model_dump() for player in lineup_players],
         'budget_used': round(best_cost / 10, 1),
+        'max_budget': max_budget,
         'total_points': best_points,
         'optimization_score': best_score,
         'required_player_ids': required_ids,

@@ -81,6 +81,18 @@ def init_db():
         cursor.execute("ALTER TABLE users ADD COLUMN formation TEXT DEFAULT '4-3-3'")
     except sqlite3.OperationalError:
         pass
+    for statement in (
+        "ALTER TABLE users ADD COLUMN membership_tier TEXT DEFAULT 'free'",
+        "ALTER TABLE users ADD COLUMN membership_status TEXT DEFAULT 'inactive'",
+        "ALTER TABLE users ADD COLUMN membership_source TEXT",
+        "ALTER TABLE users ADD COLUMN membership_expires_at TEXT",
+        "ALTER TABLE users ADD COLUMN access_pass_expires_at TEXT",
+        "ALTER TABLE users ADD COLUMN wallet_address TEXT",
+    ):
+        try:
+            cursor.execute(statement)
+        except sqlite3.OperationalError:
+            pass
         
     # 2. Create players table
     cursor.execute("""
@@ -142,6 +154,22 @@ def init_db():
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (sell_player_id) REFERENCES players(id),
         FOREIGN KEY (buy_player_id) REFERENCES players(id)
+    )
+    """)
+
+    # 6. Keep an auditable record of membership and x402 access grants.
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS access_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        access_mode TEXT NOT NULL,
+        amount REAL NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'USDC',
+        source TEXT NOT NULL,
+        receipt TEXT NOT NULL,
+        simulated INTEGER DEFAULT 0,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """)
     

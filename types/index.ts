@@ -45,6 +45,7 @@ export interface SuggestedAction {
   startingPlayerIds?: string[];
   benchPlayerIds?: string[];
   budgetUsed?: number;
+  maxBudget?: number;
   totalPoints?: number;
   strategy?: 'balanced' | 'attacking' | 'defensive';
   reasoning: string;
@@ -55,8 +56,43 @@ export interface AgentResponse {
   suggestedAction?: SuggestedAction;
   isPremium: boolean;
   paymentVerified?: boolean;
-  provider?: 'gemini' | 'fallback';
+  provider?: 'gemini' | 'fallback' | 'locked';
   model?: string;
+  accessRequired?: boolean;
+  membershipActive?: boolean;
+  accessSource?: string;
+}
+
+export interface AccessStatus {
+  username: string;
+  isDemoAccount: boolean;
+  membershipTier: 'free' | 'pro' | 'demo_pro';
+  membershipStatus: 'active' | 'inactive';
+  membershipActive: boolean;
+  membershipSource?: string | null;
+  membershipExpiresAt?: string | null;
+  accessPassActive: boolean;
+  accessPassExpiresAt?: string | null;
+  hasAiAccess: boolean;
+  hasAnalyticsAccess: boolean;
+  hasFinanceAccess: boolean;
+  accessSource?: string | null;
+  walletAddress?: string | null;
+  paymentMode: 'demo' | 'verified_x402';
+  x402Network: string;
+  pricing: {
+    membershipUsdc: number;
+    singleAccessUsdc: number;
+    membershipDays: number;
+    singleAccessMinutes: number;
+  };
+}
+
+export interface AccessUnlockResponse extends AccessStatus {
+  success: boolean;
+  message: string;
+  receipt: string;
+  simulated: boolean;
 }
 
 export interface TransferReceipt {
@@ -83,5 +119,5 @@ export interface ChatMessage {
   isPremium?: boolean;
   suggestedAction?: SuggestedAction;
   actionApplied?: boolean;
-  provider?: 'gemini' | 'fallback';
+  provider?: 'gemini' | 'fallback' | 'locked';
 }

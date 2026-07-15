@@ -23,6 +23,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (!response.ok) {
     const detail = typeof data?.detail === 'string'
       ? data.detail
+      : typeof data?.detail?.error === 'string'
+        ? data.detail.error
       : typeof data?.message === 'string'
         ? data.message
         : `Request failed (${response.status})`;

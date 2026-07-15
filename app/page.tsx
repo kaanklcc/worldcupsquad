@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt, LineupApplyReceipt } from '@/types';
+import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt, LineupApplyReceipt, AccessStatus, AccessUnlockResponse } from '@/types';
 import Header from '@/components/Header';
 import Pitch from '@/components/Pitch';
 import ChatPanel from '@/components/ChatPanel';
@@ -9,6 +9,7 @@ import PlayerSelectionModal from '@/components/PlayerSelectionModal';
 import Sidebar from '@/components/Sidebar';
 import ExecuteSyncModal from '@/components/ExecuteSyncModal';
 import AuthOverlay from '@/components/AuthOverlay';
+import AccessModal from '@/components/AccessModal';
 import { apiFetch } from '@/lib/api';
 
 type SelectedSlot = SquadSlot & { isBench: boolean };
@@ -20,6 +21,8 @@ const FORMATION_COUNTS: Record<string, { df: number; mf: number; fw: number }> =
   '4-4-2': { df: 4, mf: 4, fw: 2 },
   '5-3-2': { df: 5, mf: 3, fw: 2 },
 };
+
+const DEEP_ANALYTICS_PROMPT = 'Run Deep Tactical Analytics on my current squad. Respect the selected formation and the authenticated server-side budget. Evaluate positional balance, verified World Cup 2026 goals and assists where available, model xG estimates, player availability, clean-sheet potential and price efficiency. Identify the three weakest tactical points, compare at least two viable transfer alternatives, then return one executable budget-valid transfer only when it materially improves the squad. Clearly distinguish verified tournament facts from model estimates.';
 
 function createSquadForFormation(formation: string): SquadSlot[] {
   const counts = FORMATION_COUNTS[formation] ?? FORMATION_COUNTS['4-3-3'];
@@ -71,8 +74,11 @@ export default function HomePage() {
   // Tab State
   const [activeTab, setActiveTab] = useState('AI Consultant');
 
-  // Premium / Sync State
-  const [isPremiumUnlocked, setIsPremiumUnlocked] = useState(false);
+  // Membership / x402 access is always sourced from the backend.
+  const [accessStatus, setAccessStatus] = useState<AccessStatus | null>(null);
+  const [accessModalOpen, setAccessModalOpen] = useState(false);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Authentication State
@@ -140,6 +146,16 @@ export default function HomePage() {
       .catch(console.error);
   }, []);
 
+  const fetchAccessStatus = useCallback(async () => {
+    try {
+      const access = await apiFetch<AccessStatus>('/api/access/status');
+      setAccessStatus(access);
+    } catch (error) {
+      console.error(error);
+      setAccessStatus(null);
+    }
+  }, []);
+
   // ─── Load players & Verify Token ───────────────────────────────────────────
   useEffect(() => {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -161,6 +177,7 @@ export default function HomePage() {
           if (res.ok) {
             setCurrentUser(username);
             fetchSquadLineup(token);
+            fetchAccessStatus();
           } else {
             localStorage.removeItem('token');
             localStorage.removeItem('username');
@@ -179,7 +196,7 @@ export default function HomePage() {
       const timer = window.setTimeout(() => setAuthLoading(false), 0);
       return () => window.clearTimeout(timer);
     }
-  }, [fetchSquadLineup]);
+  }, [fetchAccessStatus, fetchSquadLineup]);
 
   // ─── Derived ────────────────────────────────────────────────────────────
   const squadPlayerIds = useMemo(
@@ -196,6 +213,8 @@ export default function HomePage() {
       bench.reduce((sum, s) => sum + (s.player?.price ?? 0), 0),
     [squad, bench]
   );
+
+  const isPremiumUnlocked = accessStatus?.hasAiAccess ?? false;
 
   const getFormationCounts = useCallback((form: string) => {
     if (form === '4-2-3-1') return { df: 4, mf: 5, fw: 1 };
@@ -312,6 +331,26 @@ export default function HomePage() {
 
   // CCTP Bridge
   const handleCCTP = useCallback(async () => {
+    if (!accessStatus?.hasFinanceAccess) {
+      setAccessError(null);
+      setAccessModalOpen(true);
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `msg-${Date.now()}-finance-locked`,
+          role: 'assistant',
+          content: '🔒 **Injective Finance kilitli**\n\nCCTP ile USDC backing yalnızca aktif Pro üyelik ve kaydedilmiş bir Injective wallet ile kullanılabilir.',
+          provider: 'locked',
+        },
+      ]);
+      return;
+    }
+    if (!accessStatus.walletAddress) {
+      setAccessError('CCTP kullanmadan önce Injective wallet adresini bağla ve kaydet.');
+      setAccessModalOpen(true);
+      return;
+    }
+
     setCctpLoading(true);
     try {
       const data = await apiFetch<{
@@ -323,7 +362,7 @@ export default function HomePage() {
       }>('/api/cctp', {
         method: 'POST',
         body: JSON.stringify({
-          walletAddress: 'inj1x8dq7f3k9v2m4n5p6r7s8t9u0w1x2y3z4k4m2',
+          walletAddress: accessStatus.walletAddress,
           amount: 20,
           sourceChain: 'Ethereum',
         }),
@@ -350,17 +389,17 @@ export default function HomePage() {
     } finally {
       setCctpLoading(false);
     }
-  }, [budget]);
+  }, [accessStatus, budget]);
 
   // Send chat message
   const handleAgentChat = useCallback(
-    async (prompt: string, isPremium: boolean) => {
+    async (prompt: string, isAnalytics: boolean) => {
       // Add user message
       const userMsg: ChatMessage = {
         id: `msg-${Date.now()}`,
         role: 'user',
-        content: isPremium ? `🔮 [Premium] ${prompt}` : prompt,
-        isPremium,
+        content: isAnalytics ? `🔮 [Analytics] ${prompt}` : prompt,
+        isPremium: isAnalytics,
       };
       setMessages((prev) => [...prev, userMsg]);
       setAgentLoading(true);
@@ -371,13 +410,17 @@ export default function HomePage() {
           suggestedAction?: SuggestedAction;
           isPremium: boolean;
           paymentVerified?: boolean;
-          provider?: 'gemini' | 'fallback';
+          provider?: 'gemini' | 'fallback' | 'locked';
           model?: string;
+          accessRequired?: boolean;
+          membershipActive?: boolean;
+          accessSource?: string;
         }>('/api/agent', {
           method: 'POST',
           body: JSON.stringify({
             prompt,
-            hasPaidX402: isPremium,
+            // Access is determined from the authenticated user on the server.
+            hasPaidX402: false,
             squadPlayerIds,
             formation,
           }),
@@ -393,9 +436,6 @@ export default function HomePage() {
           provider: data.provider,
         };
         
-        if (data.isPremium) {
-          setIsPremiumUnlocked(true);
-        }
         setMessages((prev) => [...prev, assistantMsg]);
         if (data.suggestedAction) {
           setPendingAction(data.suggestedAction);
@@ -422,17 +462,10 @@ export default function HomePage() {
   const handleTabClick = useCallback((tab: string) => {
     if (tab === 'Analytics') {
       setActiveTab('AI Consultant');
-      // Add a system notice to chat
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg-premium-unlock-${Date.now()}`,
-          role: 'assistant',
-          content: `🔮 **Deep Tactical Analytics Unlocked!**\n\nInitializing premium database scans for Spain, England, France, and Argentina squad statistics. Compiling optimal tactical recommendation...`,
-          isPremium: true,
-        },
-      ]);
-      handleAgentChat('Analyse my squad and suggest the best transfer', true);
+      // Locked users receive the complete capability/paywall text from the
+      // agent endpoint; entitled users receive the same deep analysis used by
+      // the dedicated button.
+      handleAgentChat(DEEP_ANALYTICS_PROMPT, true);
     } else if (tab === 'Matchday') {
       const matchdayMessageId = `msg-matchday-${Date.now()}`;
       setActiveTab('AI Consultant');
@@ -475,6 +508,20 @@ export default function HomePage() {
       return;
     } else if (tab === 'Finance') {
       setActiveTab('AI Consultant');
+      if (!accessStatus?.hasFinanceAccess) {
+        setAccessError(null);
+        setAccessModalOpen(true);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-finance-locked-${Date.now()}`,
+            role: 'assistant',
+            content: '🔒 **Finance & Wallet erişimi kilitli**\n\nInjective wallet yönetimi ve CCTP USDC backing aktif Pro Membership gerektirir. Kaan demo hesabında üyeliği ücretsiz etkinleştirebilirsin.',
+            provider: 'locked',
+          },
+        ]);
+        return;
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -486,21 +533,70 @@ export default function HomePage() {
     } else {
       setActiveTab(tab);
     }
-  }, [handleAgentChat, budget, currentSquadCost]);
+  }, [accessStatus?.hasFinanceAccess, handleAgentChat, budget, currentSquadCost]);
 
   // Premium Unlock Handler
   const handleUnlockPremium = useCallback(() => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `msg-premium-unlock-tooltip-${Date.now()}`,
-        role: 'assistant',
-          content: `🔮 **Deep Tactical Analytics requested.**\n\nThe AI is verifying your x402 access before revealing premium scouting data.`,
-        isPremium: true,
-      },
-    ]);
-    handleAgentChat('Analyse my squad and suggest the best transfer', true);
-  }, [handleAgentChat]);
+    if (!accessStatus?.hasAnalyticsAccess) {
+      setAccessError(null);
+      setAccessModalOpen(true);
+      return;
+    }
+    handleAgentChat(DEEP_ANALYTICS_PROMPT, true);
+  }, [accessStatus?.hasAnalyticsAccess, handleAgentChat]);
+
+  const handleUnlockAccess = useCallback(async (
+    mode: 'membership' | 'single_use',
+    walletAddress?: string,
+  ) => {
+    setAccessLoading(true);
+    setAccessError(null);
+    try {
+      const data = await apiFetch<AccessUnlockResponse>('/api/access/unlock', {
+        method: 'POST',
+        body: JSON.stringify({
+          mode,
+          hasPaidX402: !accessStatus?.isDemoAccount,
+          walletAddress: walletAddress || undefined,
+        }),
+      });
+      setAccessStatus(data);
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `msg-access-${Date.now()}`,
+          role: 'assistant',
+          content:
+            `✅ **Erişim etkinleştirildi**\n\n${data.message}\n` +
+            `Plan: **${data.membershipActive ? data.membershipTier : 'x402 Match Pass'}**\n` +
+            `Receipt: \`${data.receipt}\`` +
+            `${data.simulated ? '\n\n_Not: Bu hackathon demo işlemidir; gerçek para kesilmedi._' : ''}`,
+          isPremium: true,
+        },
+      ]);
+      setAccessModalOpen(false);
+    } catch (error) {
+      setAccessError(error instanceof Error ? error.message : 'Access activation failed.');
+    } finally {
+      setAccessLoading(false);
+    }
+  }, [accessStatus]);
+
+  const handleSaveWallet = useCallback(async (walletAddress: string) => {
+    setAccessLoading(true);
+    setAccessError(null);
+    try {
+      const data = await apiFetch<AccessStatus & { success: boolean }>('/api/access/wallet', {
+        method: 'POST',
+        body: JSON.stringify({ walletAddress }),
+      });
+      setAccessStatus(data);
+    } catch (error) {
+      setAccessError(error instanceof Error ? error.message : 'Wallet could not be saved.');
+    } finally {
+      setAccessLoading(false);
+    }
+  }, []);
 
 
 
@@ -543,12 +639,16 @@ export default function HomePage() {
     localStorage.setItem('username', username);
     setCurrentUser(username);
     fetchSquadLineup(token);
-  }, [fetchSquadLineup]);
+    fetchAccessStatus();
+  }, [fetchAccessStatus, fetchSquadLineup]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
     setCurrentUser(null);
+    setAccessStatus(null);
+    setMessages([]);
+    setPendingAction(null);
   }, []);
 
   // Approve MCP action. Save first so the server validates the same snapshot
@@ -682,6 +782,21 @@ export default function HomePage() {
     [players, saveSquadSnapshot, squadPlayerIds]
   );
 
+  const handleRejectAction = useCallback((action: SuggestedAction) => {
+    const actionLabel = action.type === 'lineup'
+      ? `${action.formation ?? formation} AI lineup`
+      : 'tactical transfer';
+    setPendingAction(null);
+    setMessages((previous) => [
+      ...previous,
+      {
+        id: `msg-${Date.now()}-action-rejected`,
+        role: 'assistant',
+        content: `🚫 **Öneri reddedildi**\n\n${actionLabel} uygulanmadı; mevcut kadron değişmeden korundu.`,
+      },
+    ]);
+  }, [formation]);
+
   // ─── Render ─────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
@@ -703,7 +818,12 @@ export default function HomePage() {
         maxBudget={120}
         onAcquireBacking={handleCCTP} 
         cctpLoading={cctpLoading} 
-        cctpUsed={cctpUsed} 
+        cctpUsed={cctpUsed}
+        accessStatus={accessStatus}
+        onAccessClick={() => {
+          setAccessError(null);
+          setAccessModalOpen(true);
+        }}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -713,6 +833,8 @@ export default function HomePage() {
           onTabClick={handleTabClick} 
           onExecuteClick={handleExecuteChanges}
           onLogout={handleLogout}
+          hasAnalyticsAccess={accessStatus?.hasAnalyticsAccess}
+          hasFinanceAccess={accessStatus?.hasFinanceAccess}
         />
 
         {/* Middle Column (Pitch + Chat + Footer nested) */}
@@ -737,6 +859,9 @@ export default function HomePage() {
               messages={messages}
               onSendMessage={handleAgentChat}
               onApproveAction={handleApproveAction}
+              onRejectAction={handleRejectAction}
+              onUnlockAccess={handleUnlockPremium}
+              hasAiAccess={accessStatus?.hasAiAccess ?? false}
               isLoading={agentLoading}
               actionLoading={actionExecuting}
               pendingAction={pendingAction}
@@ -785,6 +910,18 @@ export default function HomePage() {
         error={syncError}
         onClose={() => setIsSyncing(false)}
       />
+
+      {accessModalOpen && (
+        <AccessModal
+          isOpen
+          status={accessStatus}
+          isLoading={accessLoading}
+          error={accessError}
+          onClose={() => setAccessModalOpen(false)}
+          onUnlock={handleUnlockAccess}
+          onSaveWallet={handleSaveWallet}
+        />
+      )}
     </div>
   );
 }

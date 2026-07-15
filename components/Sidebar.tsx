@@ -5,9 +5,11 @@ interface SidebarProps {
   onTabClick: (tab: string) => void;
   onExecuteClick: () => void;
   onLogout?: () => void;
+  hasAnalyticsAccess?: boolean;
+  hasFinanceAccess?: boolean;
 }
 
-export default function Sidebar({ activeTab, onTabClick, onExecuteClick, onLogout }: SidebarProps) {
+export default function Sidebar({ activeTab, onTabClick, onExecuteClick, onLogout, hasAnalyticsAccess, hasFinanceAccess }: SidebarProps) {
   return (
     <aside className="hidden xl:flex bg-surface-container-low/95 backdrop-blur-lg docked left-0 h-full w-80 border-r border-outline-variant/10 shadow-[10px_0_30px_rgba(0,0,0,0.3)] flex-col py-8 px-4 gap-stack-md z-40">
       {/* Header section */}
@@ -78,6 +80,7 @@ export default function Sidebar({ activeTab, onTabClick, onExecuteClick, onLogou
           <span className="font-body-md text-body-md uppercase tracking-widest">
             Analytics
           </span>
+          {!hasAnalyticsAccess && <span className="material-symbols-outlined ml-auto text-sm text-amber-400">lock</span>}
         </button>
 
         <button 
@@ -92,6 +95,7 @@ export default function Sidebar({ activeTab, onTabClick, onExecuteClick, onLogou
           <span className="font-body-md text-body-md uppercase tracking-widest">
             Finance
           </span>
+          {!hasFinanceAccess && <span className="material-symbols-outlined ml-auto text-sm text-amber-400">lock</span>}
         </button>
 
         <button 

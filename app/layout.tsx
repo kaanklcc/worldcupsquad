@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-page-custom-font -- Material Symbols is an icon glyph stylesheet; text fonts use next/font. */
 import type { Metadata } from "next";
 import { Oswald, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";

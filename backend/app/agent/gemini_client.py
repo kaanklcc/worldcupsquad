@@ -37,6 +37,7 @@ class GeminiAgentClient:
         squad_player_ids: List[str],
         is_premium: bool,
         current_formation: str = '4-3-3',
+        max_budget: float = 100,
     ) -> list:
         """
         Build tool functions with squad context captured via closures.
@@ -87,14 +88,10 @@ class GeminiAgentClient:
             Args:
                 target_position: If provided, only suggest transfers for this position (GK, DF, MF, FW)
             """
-            return skills.suggest_transfer(squad_player_ids, target_position)
+            return skills.suggest_transfer(squad_player_ids, target_position, max_budget)
 
-        def validate_budget(max_budget: float = 100) -> dict:
-            """Validate that the current squad fits within the budget limit.
-
-            Args:
-                max_budget: Maximum budget allowed (default 100M)
-            """
+        def validate_budget() -> dict:
+            """Validate the current squad against the authenticated manager's server-side budget."""
             return skills.validate_budget(squad_player_ids, max_budget)
 
         def get_current_world_cup_data(topic: str = "") -> dict:
@@ -128,6 +125,7 @@ class GeminiAgentClient:
                 strategy=strategy,
                 position_team_preferences=position_team_preferences,
                 current_squad_player_ids=squad_player_ids,
+                max_budget=max_budget,
             )
 
         def get_player_report(player_id: str) -> dict:
@@ -209,6 +207,7 @@ class GeminiAgentClient:
         is_premium: bool = False,
         x402_verified: bool = False,
         formation: str = '4-3-3',
+        max_budget: float = 100,
     ) -> AgentResponse:
         """
         Chat with the agent via Gemini tool-calling or rule-based fallback.
@@ -219,10 +218,11 @@ class GeminiAgentClient:
                 squad_player_ids,
                 is_premium,
                 formation,
+                max_budget,
             )
 
         try:
-            access_level = "PREMIUM (x402 verified)" if is_premium else "FREE"
+            access_level = "ENTITLED (active membership or x402 Match Pass)" if is_premium else "LOCKED"
             from ..data import get_data_metadata
             data_snapshot = get_data_metadata()
             system_instruction = (
@@ -230,13 +230,15 @@ class GeminiAgentClient:
                 f"SERVER REQUEST TIME (UTC): {datetime.now(timezone.utc).isoformat()}\n"
                 f"CURRENT WORLD CUP DATA SNAPSHOT: {json.dumps(data_snapshot, ensure_ascii=False)}\n"
                 f"CURRENT UI FORMATION: {formation}\n"
+                f"AUTHORITATIVE MANAGER BUDGET: {max_budget:g}M USDC\n"
                 f"CURRENT ACCESS LEVEL: {access_level}\n"
+                f"X402 RECEIPT VERIFIED FOR THIS ACCESS: {x402_verified}\n"
                 f"CURRENT SQUAD PLAYER IDS: {json.dumps(squad_player_ids)}\n"
                 f"Premium features (xG, injury risk, transfer suggestions) are "
                 f"{'ENABLED' if is_premium else 'DISABLED - only give basic info and suggest upgrading'}."
             )
 
-            tools = self._build_tools(squad_player_ids, is_premium, formation)
+            tools = self._build_tools(squad_player_ids, is_premium, formation, max_budget)
 
             response = await self._generate_with_failover(prompt, system_instruction, tools)
 
@@ -254,9 +256,10 @@ class GeminiAgentClient:
                     prompt,
                     squad_player_ids,
                     formation,
+                    max_budget,
                 )
             elif is_premium:
-                suggested_action = self._extract_transfer_action(response, squad_player_ids)
+                suggested_action = self._extract_transfer_action(prompt, squad_player_ids, max_budget)
 
             # The structured action is authoritative. Returning Gemini's raw
             # lineup prose here could show different names/formation than the
@@ -287,6 +290,7 @@ class GeminiAgentClient:
                 squad_player_ids,
                 is_premium,
                 formation,
+                max_budget,
             )
             fallback_res.message = f"{warning}\n\n{fallback_res.message}"
             fallback_res.provider = 'fallback'
@@ -306,7 +310,7 @@ class GeminiAgentClient:
             for position in ('GK', 'DF', 'MF', 'FW')
         }
         budget = (
-            f"{action.budgetUsed:.1f}M / 100M"
+            f"{action.budgetUsed:.1f}M / {(action.maxBudget or 100):g}M"
             if action.budgetUsed is not None else 'validated by backend'
         )
         points = (
@@ -326,11 +330,15 @@ class GeminiAgentClient:
             "Kadroyu sahaya yerleştireyim mi?"
         )
 
-    def _extract_transfer_action(self, response, squad_player_ids: List[str]) -> Optional[SuggestedAction]:
-        """Extract a transfer suggestion from the Gemini response or run the tool directly."""
-        # If Gemini already called suggest_transfer via automatic function calling,
-        # we also run it ourselves to build the structured SuggestedAction
-        transfer = skills.suggest_transfer(squad_player_ids)
+    def _extract_transfer_action(
+        self,
+        prompt: str,
+        squad_player_ids: List[str],
+        max_budget: float = 100,
+    ) -> Optional[SuggestedAction]:
+        """Build a structured, budget-valid transfer for the requested position."""
+        target_position = skills.detect_position_from_prompt(prompt)
+        transfer = skills.suggest_transfer(squad_player_ids, target_position, max_budget)
         if 'sell_player' in transfer:
             return SuggestedAction(
                 type='transfer',
@@ -370,6 +378,7 @@ class GeminiAgentClient:
         prompt: str,
         squad_player_ids: Optional[List[str]] = None,
         current_formation: str = '4-3-3',
+        max_budget: float = 100,
     ) -> Optional[SuggestedAction]:
         """Build a structured UI action that honors explicit player requests."""
         formation = current_formation
@@ -405,6 +414,7 @@ class GeminiAgentClient:
             strategy=strategy,
             position_team_preferences=position_team_preferences,
             current_squad_player_ids=squad_player_ids,
+            max_budget=max_budget,
         )
         if 'starting_player_ids' not in lineup:
             return None
@@ -440,6 +450,7 @@ class GeminiAgentClient:
             startingPlayerIds=lineup['starting_player_ids'],
             benchPlayerIds=[],
             budgetUsed=lineup['budget_used'],
+            maxBudget=lineup.get('max_budget', max_budget),
             totalPoints=lineup['total_points'],
             strategy=strategy,
             reasoning=lineup['reasoning'] + requirement_note + preference_note + strategy_note,
@@ -451,6 +462,7 @@ class GeminiAgentClient:
         squad_player_ids: List[str],
         is_premium: bool,
         formation: str = '4-3-3',
+        max_budget: float = 100,
     ) -> AgentResponse:
         """Fallback to rule-based logic when Gemini is unavailable."""
         prompt_lower = skills._normalize(prompt)
@@ -474,31 +486,13 @@ class GeminiAgentClient:
             or bool(skills.extract_position_team_preferences(prompt))
         )
         if lineup_request:
-            action = self._extract_lineup_action(prompt, squad_player_ids, formation)
+            action = self._extract_lineup_action(prompt, squad_player_ids, formation, max_budget)
             if action and action.startingPlayerIds:
                 return AgentResponse(
                     message=self._format_lineup_message(action),
                     suggestedAction=action,
                     isPremium=is_premium,
                 )
-                catalog = {player.id: player for player in skills.get_players()}
-                selected = [catalog[player_id] for player_id in action.startingPlayerIds if player_id in catalog]
-                grouped = {
-                    'GK': [player.name for player in selected if player.position == 'GK'],
-                    'DF': [player.name for player in selected if player.position == 'DF'],
-                    'MF': [player.name for player in selected if player.position == 'MF'],
-                    'FW': [player.name for player in selected if player.position == 'FW'],
-                }
-                message = (
-                    f"⚽ **{action.formation} kadro önerisi**\n\n"
-                    f"GK: {', '.join(grouped['GK'])}\n"
-                    f"DF: {', '.join(grouped['DF'])}\n"
-                    f"MF: {', '.join(grouped['MF'])}\n"
-                    f"FW: {', '.join(grouped['FW'])}\n\n"
-                    "Bu öneri FIFA 2026 kadro snapshotındaki oyuncularla oluşturuldu; "
-                    "resmi ilk 11 değildir. Kadroyu sahaya yerleştireyim mi?"
-                )
-                return AgentResponse(message=message, suggestedAction=action, isPremium=is_premium)
 
         # Squad analysis
         if any(kw in prompt_lower for kw in ['squad', 'team', 'lineup', 'analyse', 'analyze']):
@@ -526,7 +520,7 @@ class GeminiAgentClient:
                 if squad_analysis['high_injury_risk']:
                     msg += f"⚠️ **Injury Alert**: {', '.join(squad_analysis['high_injury_risk'])}\n"
 
-                transfer = skills.suggest_transfer(squad_player_ids)
+                transfer = skills.suggest_transfer(squad_player_ids, max_budget=max_budget)
                 if 'sell_player' in transfer:
                     suggested_action = SuggestedAction(
                         type='transfer',
@@ -583,7 +577,8 @@ class GeminiAgentClient:
                     isPremium=False
                 )
 
-            transfer = skills.suggest_transfer(squad_player_ids)
+            target_position = skills.detect_position_from_prompt(prompt)
+            transfer = skills.suggest_transfer(squad_player_ids, target_position, max_budget)
             if 'sell_player' in transfer:
                 suggested_action = SuggestedAction(
                     type='transfer',

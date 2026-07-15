@@ -17,7 +17,10 @@ Python FastAPI backend for the Auto-Gaffer World Cup 2026 Fantasy Football Manag
 - `GET  /api/players` - Get the 104-player FIFA roster snapshot for Argentina, England, France, and Spain
 - `GET  /api/players/meta` - Get roster snapshot date and FIFA source URLs
 - `GET  /api/worldcup/snapshot` - Get dated semifinal fixtures and provenance
-- `POST /api/agent` - Chat with AI consultant (free + premium via x402)
+- `GET  /api/access/status` - Read persistent membership, Match Pass and wallet access
+- `POST /api/access/unlock` - Activate Kaan's free judge demo or process x402 access
+- `POST /api/access/wallet` - Validate and save an Injective/EVM wallet
+- `POST /api/agent` - Chat with the membership/x402-gated AI consultant
 - `POST /api/squad/apply-lineup` - Apply a confirmed, budget-validated AI lineup
 - `POST /api/cctp` - Bridge USDC from Ethereum to Injective
 - `POST /api/transfers/execute` - Execute transfers via MCP
@@ -37,11 +40,13 @@ The Gemini LLM has access to these tools:
 
 ### x402 Payment Verification
 
-Premium features require x402 payment verification:
+All Gemini and Analytics features require a server-side entitlement:
 
-- Frontend sends `X-Payment` or `X-Payment-Receipt` header
-- Backend verifies payment via facilitator
-- If no facilitator configured, trusts `hasPaidX402` body flag for demo
+- x402 v2 challenges use `PAYMENT-REQUIRED`; paid retries use `PAYMENT-SIGNATURE`; successful access returns `PAYMENT-RESPONSE`.
+- The backend stores membership/pass expiry and an access transaction audit record. It never treats `hasPaidX402` as authoritative in production.
+- The `Kaan` account starts locked and may explicitly activate a free `demo_pro` membership. No other account receives that bypass.
+- Arbitrary simulated purchases are disabled by default, even when `X402_DEMO_MODE=true`. They additionally require `X402_ALLOW_SIMULATED_PURCHASES=true`.
+- Production requires a configured facilitator, `X402_ASSET`, and non-zero `X402_PAY_TO` receiver. The adapter calls facilitator `/verify` and `/settle` before granting access.
 
 ### CCTP USDC Bridging
 
@@ -84,6 +89,7 @@ Required for production:
 
 Optional for demo/local development:
 - Leave empty for simulated behavior (x402, CCTP, Gemini fallback)
+- Keep `X402_ALLOW_SIMULATED_PURCHASES=false`; Kaan's scoped demo still works.
 
 ### 3. Run the server
 
@@ -140,8 +146,9 @@ python -m app.mcp.server
 # Get players
 curl http://localhost:8000/api/players
 
-# Agent chat (free tier)
+# Agent chat (returns the capability/paywall text while locked)
 curl -X POST http://localhost:8000/api/agent \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Tell me about Mbappe", "squadPlayerIds": [], "hasPaidX402": false}'
 
@@ -168,9 +175,10 @@ Warning: GEMINI_API_KEY not configured. Falling back to rule-based logic.
 
 ### x402 verification failing
 
-If x402 facilitator is not configured, the system trusts the client's
-`hasPaidX402` flag for demo purposes. Set `X402_FACILITATOR_URL` in `.env`
-to enable real verification.
+If x402 facilitator is not configured, non-Kaan users remain locked. Configure
+`X402_FACILITATOR_URL`, `X402_PAY_TO`, `X402_ASSET`, and the correct CAIP-2
+`X402_NETWORK` for real verification. The local Kaan demo membership is always
+labelled simulated and creates a zero-USDC audit receipt.
 
 ### CCTP simulation
 

@@ -8,6 +8,7 @@ from ..mcp.client import get_mcp_client
 from ..data import get_players
 from .squads import get_current_user_id
 from ..db import get_db_connection
+from ..access import require_ai_access
 
 
 router = APIRouter()
@@ -21,6 +22,7 @@ async def execute_transfer(
     """
     Execute a player transfer via the MCP server and log the transaction in the database.
     """
+    require_ai_access(user_id)
     # Validate players exist
     players = get_players()
     sell_player = next((p for p in players if p.id == request.sellPlayerId), None)

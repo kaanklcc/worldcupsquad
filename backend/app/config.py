@@ -18,8 +18,17 @@ class Settings(BaseSettings):
     injective_testnet: bool = True
 
     # x402
-    x402_facilitator_url: str = "https://facilitator.x402.co/verify"
+    x402_facilitator_url: str = ""
     x402_demo_mode: bool = True
+    # Optional presentation-only switch. Kaan's demo membership does not need
+    # this; other accounts remain payment-gated by default.
+    x402_allow_simulated_purchases: bool = False
+    # x402 v2 uses CAIP-2 network identifiers. Injective EVM testnet is 1439.
+    x402_network: str = "eip155:1439"
+    x402_pay_to: str = "0x0000000000000000000000000000000000000000"
+    x402_asset: str = "0x0000000000000000000000000000000000000000"
+    x402_facilitator_token: str = ""
+    x402_resource_base_url: str = "http://localhost:8000"
 
     # Use the real stdio MCP transport by default; simulation remains available
     # for offline demos or when a judge only runs the FastAPI process.
