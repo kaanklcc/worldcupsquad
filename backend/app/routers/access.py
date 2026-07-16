@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import time
 from typing import Literal, Optional
 
@@ -16,6 +17,7 @@ from ..access import (
     grant_demo_membership,
     grant_paid_access,
     save_wallet,
+    validate_wallet,
 )
 from ..config import settings
 from ..operation_ledger import begin_operation, confirm_operation, fail_operation
@@ -38,7 +40,12 @@ class WalletUpdateRequest(BaseModel):
 
 def _payment_requirement(mode: str) -> dict:
     zero_address = "0x0000000000000000000000000000000000000000"
-    if not settings.x402_facilitator_url or settings.x402_pay_to == zero_address or settings.x402_asset == zero_address:
+    facilitator = settings.x402_facilitator_url.strip()
+    pay_to = settings.x402_pay_to.strip()
+    asset = settings.x402_asset.strip()
+    valid_receiver = bool(re.fullmatch(r"0x[a-fA-F0-9]{40}", pay_to)) and pay_to.lower() != zero_address
+    valid_asset = bool(re.fullmatch(r"0x[a-fA-F0-9]{40}", asset)) and asset.lower() != zero_address
+    if not facilitator or not valid_receiver or not valid_asset:
         raise HTTPException(status_code=503, detail="Configure X402_FACILITATOR_URL, X402_PAY_TO and X402_ASSET before accepting real x402 payments")
     price = MEMBERSHIP_PRICE_USDC if mode == "membership" else SINGLE_ACCESS_PRICE_USDC
     amount_atomic = str(round(price * 1_000_000))
@@ -55,8 +62,8 @@ def _payment_requirement(mode: str) -> dict:
             "scheme": "exact",
             "network": settings.x402_network,
             "amount": amount_atomic,
-            "asset": settings.x402_asset,
-            "payTo": settings.x402_pay_to,
+            "asset": asset,
+            "payTo": pay_to,
             "maxTimeoutSeconds": 60,
             "extra": {"name": "USDC", "version": "2"},
         }],

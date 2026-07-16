@@ -27,6 +27,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         db.DB_FILE = Path(cls._temp_dir.name) / "auth.db"
         cls.client = TestClient(app)
         cls._original_settings = {
+            "jwt_secret_key": settings.jwt_secret_key,
             "x402_demo_mode": settings.x402_demo_mode,
             "x402_allow_simulated_purchases": settings.x402_allow_simulated_purchases,
             "x402_facilitator_url": settings.x402_facilitator_url,
@@ -37,6 +38,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
             "live_stats_enabled": settings.live_stats_enabled,
             "live_event_feed_enabled": settings.live_event_feed_enabled,
         }
+        settings.jwt_secret_key = "test-only-jwt-secret-with-at-least-32-characters"
         settings.x402_demo_mode = True
         settings.x402_allow_simulated_purchases = False
         settings.x402_facilitator_url = "https://facilitator.test"

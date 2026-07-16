@@ -12,8 +12,18 @@ from ..config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-SECRET_KEY = settings.jwt_secret_key
 ALGORITHM = "HS256"
+
+
+def _jwt_secret() -> str:
+    """Fail closed when the operator has not configured token signing."""
+    secret = settings.jwt_secret_key.strip()
+    if len(secret) < 32:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="JWT_SECRET_KEY is not configured. Add a random value of at least 32 characters to backend/.env.",
+        )
+    return secret
 
 # ─── Pydantic Schemas ──────────────────────────────────────────────────────────
 
@@ -63,7 +73,7 @@ def create_token(user_id: int, username: str) -> str:
         "username": username,
         "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3)
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, _jwt_secret(), algorithm=ALGORITHM)
 
 def decode_token(token: str) -> dict:
     """Decode and validate JWT access token."""
@@ -72,7 +82,7 @@ def decode_token(token: str) -> dict:
             token = token.removeprefix("Bearer ").strip()
         if not token:
             raise jwt.InvalidTokenError("Empty token")
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, _jwt_secret(), algorithms=[ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(

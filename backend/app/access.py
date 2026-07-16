@@ -95,10 +95,15 @@ def get_access_status(user_id: int) -> Dict[str, Any]:
     source = row["membership_source"] if membership_active else (
         "x402_access_pass" if access_pass_active else None
     )
+    zero_address = "0x0000000000000000000000000000000000000000"
+    pay_to = settings.x402_pay_to.strip()
+    asset = settings.x402_asset.strip()
     x402_ready = bool(
-        settings.x402_facilitator_url
-        and settings.x402_pay_to != "0x0000000000000000000000000000000000000000"
-        and settings.x402_asset != "0x0000000000000000000000000000000000000000"
+        settings.x402_facilitator_url.strip()
+        and re.fullmatch(r"0x[a-fA-F0-9]{40}", pay_to)
+        and pay_to.lower() != zero_address
+        and re.fullmatch(r"0x[a-fA-F0-9]{40}", asset)
+        and asset.lower() != zero_address
     )
 
     return {

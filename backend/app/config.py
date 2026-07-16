@@ -10,8 +10,10 @@ class Settings(BaseSettings):
     # Stable function-calling model. Override with GEMINI_MODEL when needed.
     gemini_model: str = "gemini-3.1-flash-lite"
 
-    # Authentication. Override this in any shared or production environment.
-    jwt_secret_key: str = "wcai-local-development-secret-key-2026"
+    # Authentication secret is always supplied by the operator. There is no
+    # hardcoded fallback because an accidental default would make every
+    # deployment sign tokens with the same key.
+    jwt_secret_key: str = ""
 
     # Injective
     injective_mnemonic: str = ""
@@ -25,7 +27,8 @@ class Settings(BaseSettings):
     x402_allow_simulated_purchases: bool = False
     # x402 v2 uses CAIP-2 network identifiers. Injective EVM testnet is 1439.
     x402_network: str = "eip155:1439"
-    x402_pay_to: str = "0x0000000000000000000000000000000000000000"
+    # Operator-owned receiver address; intentionally has no default.
+    x402_pay_to: str = ""
     x402_asset: str = "0x0000000000000000000000000000000000000000"
     x402_facilitator_token: str = ""
     x402_resource_base_url: str = "http://localhost:8000"
