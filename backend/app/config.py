@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.1-flash-lite"
 
     # Authentication. Override this in any shared or production environment.
-    jwt_secret_key: str = "auto-gaffer-local-development-secret"
+    jwt_secret_key: str = "wcai-local-development-secret-key-2026"
 
     # Injective
     injective_mnemonic: str = ""
@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     cctp_destination_domain: int = 3  # Injective
     cctp_source_token: str = "0x07865c6e87b9f70255377e024ace6630c1eaa37f"  # USDC on Ethereum
     circle_api_key: str = ""
+
+    # Public World Cup event refresh. Tests can disable this to stay fully
+    # deterministic and offline.
+    live_stats_enabled: bool = True
+    live_event_feed_enabled: bool = True
 
     # Server
     api_host: str = "0.0.0.0"

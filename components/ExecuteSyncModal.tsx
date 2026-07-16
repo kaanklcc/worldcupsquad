@@ -128,7 +128,7 @@ export default function ExecuteSyncModal({
             </div>
             <h3 className="font-display-lg text-xl uppercase tracking-wider text-slate-100 mt-2">Broadcasting Changes</h3>
             <p className="font-mono-jb text-xs text-slate-400 max-w-xs">
-              Persisting your squad state through the Auto-Gaffer API...
+              Persisting your squad state through the WCAI API...
             </p>
           </div>
         )}

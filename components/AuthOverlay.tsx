@@ -9,10 +9,10 @@ interface AuthOverlayProps {
 type AuthMode = 'login' | 'register' | 'forgot_step1' | 'forgot_step2';
 
 const SECURITY_QUESTIONS = [
-  "İlk evcil hayvanınızın adı nedir?",
-  "En sevdiğiniz futbolcunun adı nedir?",
-  "Doğduğunuz şehir neresidir?",
-  "İlk okul öğretmeninizin soyadı nedir?"
+  "What was the name of your first pet?",
+  "Who was your favourite footballer growing up?",
+  "What city were you born in?",
+  "What was your first school teacher's surname?"
 ];
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -51,7 +51,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
     e.preventDefault();
     resetMessages();
     if (!username || !password) {
-      setErrorMsg('Lütfen tüm alanları doldurun.');
+      setErrorMsg('Please complete every field.');
       return;
     }
     
@@ -68,12 +68,12 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.detail || 'Giriş bilgileri hatalı veya kayıt yok.');
+        throw new Error(data.detail || 'Invalid sign-in details or account not found.');
       }
       
       onLoginSuccess(data.username, data.token);
     } catch (err: unknown) {
-      setErrorMsg(getErrorMessage(err, 'Sunucuya bağlanılamadı.'));
+      setErrorMsg(getErrorMessage(err, 'Could not connect to the server.'));
     } finally {
       setLoading(false);
     }
@@ -83,7 +83,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
     e.preventDefault();
     resetMessages();
     if (!username || !email || !password || !securityAnswer) {
-      setErrorMsg('Lütfen tüm alanları doldurun.');
+      setErrorMsg('Please complete every field.');
       return;
     }
     
@@ -103,15 +103,15 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.detail || 'Kayıt başarısız.');
+        throw new Error(data.detail || 'Registration failed.');
       }
       
-      setSuccessMsg('Menajer kaydı başarılı! Şimdi şifrenizle giriş yapabilirsiniz.');
+      setSuccessMsg('Manager account created. You can now sign in with your password.');
       setMode('login');
       setPassword('');
       setSecurityAnswer('');
     } catch (err: unknown) {
-      setErrorMsg(getErrorMessage(err, 'Kayıt sırasında bir hata oluştu.'));
+      setErrorMsg(getErrorMessage(err, 'An error occurred while creating your account.'));
     } finally {
       setLoading(false);
     }
@@ -121,7 +121,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
     e.preventDefault();
     resetMessages();
     if (!usernameOrEmail) {
-      setErrorMsg('Kullanıcı adı veya e-posta girin.');
+      setErrorMsg('Enter a username or email address.');
       return;
     }
     
@@ -135,13 +135,13 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.detail || 'Kullanıcı bulunamadı.');
+        throw new Error(data.detail || 'Account not found.');
       }
       
       setFetchedQuestion(data.security_question);
       setMode('forgot_step2');
     } catch (err: unknown) {
-      setErrorMsg(getErrorMessage(err, 'Bir hata oluştu.'));
+      setErrorMsg(getErrorMessage(err, 'An error occurred.'));
     } finally {
       setLoading(false);
     }
@@ -151,7 +151,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
     e.preventDefault();
     resetMessages();
     if (!resetAnswer || !newPassword) {
-      setErrorMsg('Lütfen tüm alanları doldurun.');
+      setErrorMsg('Please complete every field.');
       return;
     }
     
@@ -169,17 +169,17 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.detail || 'Şifre sıfırlama başarısız.');
+        throw new Error(data.detail || 'Password reset failed.');
       }
       
-      setSuccessMsg('Şifreniz başarıyla sıfırlandı! Yeni şifrenizle giriş yapabilirsiniz.');
+      setSuccessMsg('Your password was reset. You can now sign in with the new password.');
       setMode('login');
       setUsername(usernameOrEmail);
       setPassword('');
       setResetAnswer('');
       setNewPassword('');
     } catch (err: unknown) {
-      setErrorMsg(getErrorMessage(err, 'Şifre sıfırlanamadı.'));
+      setErrorMsg(getErrorMessage(err, 'Your password could not be reset.'));
     } finally {
       setLoading(false);
     }
@@ -228,21 +228,21 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         {mode === 'login' && (
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Menajer Kimliği (Kullanıcı Adı veya E-posta)</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Manager ID (Username or Email)</label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">person</span>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Manager adı veya email"
+                  placeholder="Manager username or email"
                   className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
                 />
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Giriş Şifresi</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Password</label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">lock</span>
                 <input
@@ -260,15 +260,15 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               disabled={loading}
               className="emerald-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'DUGOUT GİRİŞİ YAP'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'SIGN IN TO WCAI'}
             </button>
 
             <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono-jb mt-2">
               <button type="button" onClick={() => { setMode('forgot_step1'); resetMessages(); }} className="hover:text-emerald-400 transition-colors">
-                Şifremi Unuttum?
+                Forgot password?
               </button>
               <button type="button" onClick={() => { setMode('register'); resetMessages(); }} className="hover:text-emerald-400 transition-colors font-bold">
-                Yeni Menajer Alımı (Kayıt)
+                Create manager account
               </button>
             </div>
           </form>
@@ -278,18 +278,18 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         {mode === 'register' && (
           <form onSubmit={handleRegister} className="flex flex-col gap-3.5 max-h-[400px] overflow-y-auto pr-1 scrollbar-thin">
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Menajer Adı</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Manager username</label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Manager adı"
+                placeholder="Manager username"
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Menajer E-postası</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Manager email</label>
               <input
                 type="email"
                 value={email}
@@ -300,7 +300,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Taktik Şifre</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Password</label>
               <input
                 type="password"
                 value={password}
@@ -309,12 +309,12 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
               <p className="text-[9px] text-slate-500 font-mono-jb mt-0.5 leading-normal">
-                * Şifreniz en az 6 karakter, 1 büyük harf (A-Z), 1 küçük harf (a-z) ve 1 rakam (0-9) içermelidir.
+                * Password must contain at least 6 characters, one uppercase letter, one lowercase letter and one number.
               </p>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Güvenlik Sorusu (Kurtarma için)</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Security question (for recovery)</label>
               <select
                 value={securityQuestion}
                 onChange={(e) => setSecurityQuestion(e.target.value)}
@@ -327,12 +327,12 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Güvenlik Sorusu Cevabı</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Security answer</label>
               <input
                 type="text"
                 value={securityAnswer}
                 onChange={(e) => setSecurityAnswer(e.target.value)}
-                placeholder="Cevabınız"
+                placeholder="Your answer"
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
             </div>
@@ -342,13 +342,13 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               disabled={loading}
               className="emerald-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'YENİ MENAJER SÖZLEŞMESİ İMZALA'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'CREATE MANAGER ACCOUNT'}
             </button>
 
             <div className="text-center text-[10px] text-slate-400 font-mono-jb mt-1">
-              Zaten dugout kaydınız var mı?{' '}
+              Already have an account?{' '}
               <button type="button" onClick={() => { setMode('login'); resetMessages(); }} className="text-emerald-400 font-bold hover:underline transition-all">
-                Giriş Yap
+                Sign in
               </button>
             </div>
           </form>
@@ -358,12 +358,12 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         {mode === 'forgot_step1' && (
           <form onSubmit={handleGetForgotPasswordQuestion} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Menajer Kimliği (Kullanıcı Adı veya E-posta)</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Manager ID (Username or Email)</label>
               <input
                 type="text"
                 value={usernameOrEmail}
                 onChange={(e) => setUsernameOrEmail(e.target.value)}
-                placeholder="Sıfırlanacak hesabın bilgisi"
+                placeholder="Account username or email"
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
             </div>
@@ -373,11 +373,11 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               disabled={loading}
               className="gold-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'GÜVENLİK SORUSUNU DOĞRULA'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'VERIFY SECURITY QUESTION'}
             </button>
 
             <button type="button" onClick={() => { setMode('login'); resetMessages(); }} className="text-center text-[10px] text-slate-400 hover:text-emerald-400 transition-colors font-mono-jb mt-2">
-              İptal et ve Giriş Ekranına Dön
+              Cancel and return to sign in
             </button>
           </form>
         )}
@@ -386,23 +386,23 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         {mode === 'forgot_step2' && (
           <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
             <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-lg flex flex-col gap-1">
-              <div className="font-mono-jb text-[8px] text-slate-500 uppercase font-bold">Güvenlik Sorunuz:</div>
+              <div className="font-mono-jb text-[8px] text-slate-500 uppercase font-bold">Your security question:</div>
               <div className="text-sm font-bold text-slate-200">{fetchedQuestion}</div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Güvenlik Sorusu Cevabı</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Security answer</label>
               <input
                 type="text"
                 value={resetAnswer}
                 onChange={(e) => setResetAnswer(e.target.value)}
-                placeholder="Cevabınız"
+                placeholder="Your answer"
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Yeni Taktik Şifre</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">New password</label>
               <input
                 type="password"
                 value={newPassword}
@@ -417,11 +417,11 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               disabled={loading}
               className="gold-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'YENİ ŞİFREYİ AKTİFLEŞTİR'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'ACTIVATE NEW PASSWORD'}
             </button>
 
             <button type="button" onClick={() => { setMode('login'); resetMessages(); }} className="text-center text-[10px] text-slate-400 hover:text-emerald-400 transition-colors font-mono-jb mt-2">
-              İptal et ve Giriş Ekranına Dön
+              Cancel and return to sign in
             </button>
           </form>
         )}

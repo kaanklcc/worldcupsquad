@@ -118,14 +118,14 @@ async def register(user: UserRegister):
         conn.close()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Geçersiz e-posta formatı. Lütfen doğru bir e-posta adresi girin (örn: manager@example.com)."
+            detail="Invalid email format. Enter a valid email address (for example, manager@example.com)."
         )
         
     if not validate_password_strength(user.password):
         conn.close()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Şifre gücü yetersiz! Şifreniz en az 6 karakter olmalı; en az bir büyük harf (A-Z), bir küçük harf (a-z) ve bir rakam (0-9) içermelidir."
+            detail="Password is too weak. Use at least 6 characters with one uppercase letter, one lowercase letter and one number."
         )
     
     # Check if username already exists (case-insensitive check)
@@ -134,7 +134,7 @@ async def register(user: UserRegister):
         conn.close()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bu kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı seçin."
+            detail="This username is already taken. Choose another username."
         )
         
     # Check if email already exists
@@ -143,7 +143,7 @@ async def register(user: UserRegister):
         conn.close()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bu e-posta adresi zaten kayıtlı. Lütfen giriş yapmayı deneyin."
+            detail="This email address is already registered. Try signing in instead."
         )
         
     # Hash password and security answer
@@ -161,7 +161,7 @@ async def register(user: UserRegister):
     conn.commit()
     conn.close()
     
-    return {"success": True, "message": "Manager kaydı başarıyla tamamlandı!"}
+    return {"success": True, "message": "Manager registration completed successfully."}
 
 @router.post("/login")
 async def login(user: UserLogin):

@@ -2,6 +2,7 @@
 
 import { useRef, useEffect } from 'react';
 import { Player, SquadSlot } from '@/types';
+import { teamGradient } from '@/lib/teamTheme';
 
 interface PitchProps {
   squad: SquadSlot[];
@@ -137,19 +138,8 @@ export default function Pitch({
     const nameStr = player.name.split(' ').pop() || player.name;
     const pointsPct = Math.min(player.points, 100);
 
-    // Calculate flag background style based on team
-    let cardBgStyle: React.CSSProperties = {};
-    const teamName = player.team.toLowerCase();
-    
-    if (teamName.includes('argentina')) {
-      cardBgStyle = { background: 'linear-gradient(90deg, #74acdf 0% 33%, #ffffff 33% 66%, #74acdf 66% 100%)' };
-    } else if (teamName.includes('spain')) {
-      cardBgStyle = { background: 'linear-gradient(90deg, #c8102e 0% 33%, #ffd900 33% 66%, #c8102e 66% 100%)' };
-    } else if (teamName.includes('france')) {
-      cardBgStyle = { background: 'linear-gradient(90deg, #002395 0% 33%, #ffffff 33% 66%, #ed2939 66% 100%)' };
-    } else if (teamName.includes('england')) {
-      cardBgStyle = { background: 'linear-gradient(90deg, #ffffff 0% 45%, #e60000 45% 55%, #ffffff 55% 100%)' };
-    }
+    // Every confirmed nation resolves through the same shared theme registry.
+    const cardBgStyle: React.CSSProperties = { background: teamGradient(player.team) };
 
     // Border and special styles
     let borderClass = 'border-2 border-white/50';
@@ -482,7 +472,7 @@ export default function Pitch({
       <div className={`w-full ${activePitchWidthClass} bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-200 shadow-md flex items-center justify-between gap-1 mb-3 overflow-x-auto scrollbar-none font-label-sm text-xs font-bold text-slate-700`}>
         <span className="text-[10px] uppercase text-slate-400 mr-2 flex-shrink-0 flex items-center gap-1">
           <span className="material-symbols-outlined text-sm text-primary">grid_view</span>
-          DIZILIŞ:
+          Formation:
         </span>
         {['4-3-3', '4-4-2', '4-2-3-1', '3-5-2', '5-3-2'].map((form) => (
           <button
@@ -528,10 +518,10 @@ export default function Pitch({
           <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
             <span className="font-display-lg text-sm uppercase text-slate-800 flex items-center gap-2">
               <span className="material-symbols-outlined text-secondary animate-pulse">sports_soccer</span>
-              Yedek Kulübesi (Substitutes)
+              Substitutes Bench
             </span>
             <span className="font-label-sm text-[10px] text-slate-400">
-              {bench.filter(b => b.player !== null).length}/8 Oyuncu
+              {bench.filter(b => b.player !== null).length}/8 Players
             </span>
           </div>
           

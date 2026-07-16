@@ -1,5 +1,5 @@
 """
-MCP client for calling Auto-Gaffer squad tools.
+MCP client for calling WCAI squad tools.
 Used by the transfers router to execute transfers via MCP.
 """
 from typing import Dict, Any, Optional
@@ -12,7 +12,7 @@ from mcp.client.stdio import stdio_client
 
 
 class MCPClient:
-    """Simple MCP client for calling Auto-Gaffer tools."""
+    """Simple MCP client for calling WCAI tools."""
 
     def __init__(self, server_command: Optional[list] = None):
         """
@@ -60,7 +60,7 @@ class MCPClient:
                     if isinstance(parsed, dict):
                         parsed.setdefault("simulated", False)
                         parsed.setdefault("mcp_version", "1.0.0")
-                        parsed.setdefault("server", "auto-gaffer-mcp")
+                        parsed.setdefault("server", "wcai-mcp")
                         return parsed
 
             return {"success": False, "error": "MCP server returned no JSON content"}
@@ -92,7 +92,7 @@ class MCPClient:
                     "error": "Player not found",
                     "timestamp": time.time(),
                     "simulated": True,
-                    "server": "auto-gaffer-mcp"
+                    "server": "wcai-mcp"
                 }
 
             # Generate realistic MCP receipt
@@ -106,7 +106,7 @@ class MCPClient:
                 "reasoning": reasoning,
                 "timestamp": time.time(),
                 "mcp_version": "1.0.0",
-                "server": "auto-gaffer-mcp",
+                "server": "wcai-mcp",
                 "simulated": True
             }
 
@@ -164,7 +164,7 @@ class MCPClient:
                 "tx_hash": f"mcp_lineup_{int(time.time())}",
                 "timestamp": time.time(),
                 "mcp_version": "1.0.0",
-                "server": "auto-gaffer-mcp",
+                "server": "wcai-mcp",
                 "simulated": True
             }
 

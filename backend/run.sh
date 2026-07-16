@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Starting Auto-Gaffer Backend..."
+echo "Starting WCAI Backend..."
 echo ""
 
 # Check if uvicorn is installed

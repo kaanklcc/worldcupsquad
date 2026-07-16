@@ -1,2 +1,2 @@
-"""Auto-Gaffer Backend Package"""
+"""WCAI Backend Package"""
 __version__ = "1.0.0"

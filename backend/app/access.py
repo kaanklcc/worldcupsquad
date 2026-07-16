@@ -1,4 +1,4 @@
-"""Central membership and paid-access policy for Auto-Gaffer.
+"""Central membership and paid-access policy for WCAI.
 
 The browser never decides whether premium functionality is available.  Every
 protected endpoint asks this module for the authenticated user's current
@@ -22,24 +22,24 @@ SINGLE_ACCESS_PRICE_USDC = 0.05
 MEMBERSHIP_DAYS = 30
 SINGLE_ACCESS_MINUTES = 15
 
-LOCKED_CAPABILITIES_MESSAGE = """🔒 **Auto-Gaffer AI erişimi kilitli**
+LOCKED_CAPABILITIES_MESSAGE = """🔒 **WCAI access is locked**
 
-AI danışmanı ve Deep Tactical Analytics yalnızca aktif üyelik veya x402 ile alınan süreli erişimle kullanılabilir. Erişim açıldığında şunları yapabilirsin:
+WCAI chat and Deep Tactical Analytics require an active membership or a time-limited x402 Match Pass. When unlocked, you can use:
 
-• Güncel World Cup 2026 veri snapshot'ına göre oyuncu, takım ve maç analizi
-• Seçtiğin dizilişe tam uyan, bütçe sınırını aşmayan ideal 11 oluşturma
-• Messi, Yamal veya Mbappé gibi zorunlu oyuncuları ve ülke/bölge tercihlerini kadroya uygulama
-• Gol, asist, xG, form ve müsaitlik sinyallerine göre hücum/savunma optimizasyonu
-• Mevcut kadronun pozisyon dengesi, zayıf noktaları ve bütçe verimliliği analizi
-• Daha güçlü transfer ve oyuncu değişikliği önerileri
-• Onayından sonra MCP aracılığıyla önerilen transferi veya kadroyu sahaya uygulama
-• Kaynak durumu açıkça belirtilen derin oyuncu raporları ve sakatlık risk değerlendirmesi
+• Current World Cup 2026 player, team and match analysis
+• Budget-valid starting XIs that honour the selected formation
+• Required players such as Messi, Yamal or Mbappé plus country/position preferences
+• Attack and defence optimisation using goals, assists, xG, form and availability signals
+• Squad balance, weak-point and budget-efficiency analysis
+• Stronger transfer and single-player replacement recommendations
+• Explicitly confirmed MCP lineup or transfer actions
+• Source-labelled player reports and injury-risk assessment
 
-**Erişim seçenekleri**
-• Pro Membership: 30 gün boyunca AI, Analytics ve finans özellikleri — **4.99 USDC**
-• x402 Match Pass: AI ve Analytics için 15 dakikalık erişim — **0.05 USDC**
+**Access options**
+• Pro Membership: AI, Analytics and finance tools for 30 days — **4.99 USDC**
+• x402 Match Pass: 15 minutes of AI and Analytics — **0.05 USDC**
 
-Üyelik kartını açmak için **Unlock Deep Tactical Analytics** veya üst menüdeki üyelik durumuna tıkla. Kaan demo hesabında gerçek para kesilmez; ücretsiz demo üyeliği açıkça etkinleştirilir."""
+Open **Unlock Deep Tactical Analytics** or the membership status in the header. The Kaan demo account activates the demo membership without charging real funds."""
 
 
 def _utc_now() -> datetime:

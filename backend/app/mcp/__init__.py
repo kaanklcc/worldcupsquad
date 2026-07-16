@@ -1,1 +1,1 @@
-"""Auto-Gaffer MCP Integration"""
+"""WCAI MCP Integration"""

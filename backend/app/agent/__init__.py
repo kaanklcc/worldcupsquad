@@ -1,1 +1,1 @@
-"""Auto-Gaffer Agent Skills"""
+"""WCAI Agent Skills"""

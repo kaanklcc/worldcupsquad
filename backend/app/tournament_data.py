@@ -8,11 +8,12 @@ from typing import Any
 
 import httpx
 
+from .config import settings
 from .data import get_data_metadata, get_players, get_world_cup_snapshot
 
 
-LIVE_BASE_URL = "https://worldcup26.ir/get"
-CACHE_TTL_SECONDS = 300
+LIVE_BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=500&dates=20260601-20260731"
+CACHE_TTL_SECONDS = 60
 _cache: dict[str, Any] | None = None
 _cache_expires_at = 0.0
 _cache_lock = asyncio.Lock()
@@ -52,69 +53,59 @@ def _int(value: Any) -> int:
         return 0
 
 
-def _normalize_live(teams_payload: Any, games_payload: Any, stadiums_payload: Any) -> dict[str, Any]:
-    raw_teams = _list(teams_payload, "teams")
-    raw_games = _list(games_payload, "games")
-    raw_stadiums = _list(stadiums_payload, "stadiums")
-    if len(raw_teams) < 40 or len(raw_games) < 60:
-        raise ValueError("Live tournament payload is incomplete")
-
-    stadiums = {
-        _value(item, "id"): {
-            "name": _value(item, "name_en", _value(item, "name", "Venue pending")),
-            "city": _value(item, "city_en", _value(item, "city")),
-        }
-        for item in raw_stadiums
-    }
-    teams = []
-    for item in raw_teams:
-        code = _value(item, "fifa_code", "TBD")
-        teams.append({
-            "id": _value(item, "id", code),
-            "code": code,
-            "name": _value(item, "name_en", _value(item, "name", "TBD")),
-            "group": _value(item, "groups", _value(item, "group", "Unassigned")),
-            "flag": _value(item, "flag"),
+def _normalize_espn(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize ESPN's live World Cup scoreboard into the app's stable shape."""
+    events = payload.get("events", [])
+    if len(events) < 80:
+        raise ValueError("Live World Cup scoreboard is incomplete")
+    teams_by_name: dict[str, dict[str, Any]] = {}
+    matches = []
+    for index, event in enumerate(events, start=1):
+        competition = (event.get("competitions") or [{}])[0]
+        competitors = competition.get("competitors") or []
+        home = next((item for item in competitors if item.get("homeAway") == "home"), {})
+        away = next((item for item in competitors if item.get("homeAway") == "away"), {})
+        home_team = home.get("team") or {}
+        away_team = away.get("team") or {}
+        for team in (home_team, away_team):
+            if team.get("displayName"):
+                teams_by_name[team["displayName"]] = {
+                    "id": str(team.get("id", team["displayName"])),
+                    "code": team.get("abbreviation", "TBD"),
+                    "name": team["displayName"],
+                    "group": event.get("season", {}).get("slug", "Tournament").replace("-", " ").title(),
+                    "flag": team.get("logo", ""),
+                }
+        status = competition.get("status", {}).get("type", {})
+        state = status.get("state", "pre")
+        stage_key = event.get("season", {}).get("slug", "group")
+        venue = competition.get("venue", {})
+        matches.append({
+            "id": f"espn_{event.get('id')}",
+            "matchNumber": index,
+            "stageKey": stage_key,
+            "stage": competition.get("altGameNote") or stage_key.replace("-", " ").title(),
+            "group": stage_key.replace("-", " ").title(),
+            "homeTeam": home_team.get("displayName", "TBD"),
+            "awayTeam": away_team.get("displayName", "TBD"),
+            "homeCode": home_team.get("abbreviation", "TBD"),
+            "awayCode": away_team.get("abbreviation", "TBD"),
+            "homeScore": _int(home.get("score")) if state != "pre" else None,
+            "awayScore": _int(away.get("score")) if state != "pre" else None,
+            "status": "final" if status.get("completed") else "live" if state == "in" else "scheduled",
+            "kickoffLocal": event.get("date", ""),
+            "venue": venue.get("fullName", "Venue pending"),
+            "city": (venue.get("address") or {}).get("city", ""),
         })
-    team_by_id = {team["id"]: team for team in teams}
+    teams = sorted(teams_by_name.values(), key=lambda team: team["name"])
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for team in teams:
         groups[team["group"]].append(team)
-
-    matches = []
-    for item in raw_games:
-        stage_key = _value(item, "type", "group").lower()
-        home = team_by_id.get(_value(item, "home_team_id"))
-        away = team_by_id.get(_value(item, "away_team_id"))
-        finished = _value(item, "finished").lower() == "true"
-        elapsed = _value(item, "time_elapsed").lower()
-        status = "final" if finished else "live" if elapsed and elapsed not in {"scheduled", "not started", "-"} else "scheduled"
-        home_score = _value(item, "home_score")
-        away_score = _value(item, "away_score")
-        venue = stadiums.get(_value(item, "stadium_id"), {})
-        matches.append({
-            "id": f"live_{_value(item, 'id')}",
-            "matchNumber": _int(_value(item, "id", "0")),
-            "stageKey": stage_key,
-            "stage": STAGE_LABELS.get(stage_key, stage_key.upper()),
-            "group": _value(item, "group"),
-            "homeTeam": home["name"] if home else _value(item, "home_team_name_en", _value(item, "home_team_label", "TBD")),
-            "awayTeam": away["name"] if away else _value(item, "away_team_name_en", _value(item, "away_team_label", "TBD")),
-            "homeCode": home["code"] if home else "TBD",
-            "awayCode": away["code"] if away else "TBD",
-            "homeScore": _int(home_score) if home_score.strip().lstrip("-").isdigit() else None,
-            "awayScore": _int(away_score) if away_score.strip().lstrip("-").isdigit() else None,
-            "status": status,
-            "kickoffLocal": _value(item, "local_date"),
-            "venue": venue.get("name", "Venue pending"),
-            "city": venue.get("city", ""),
-        })
-    matches.sort(key=lambda match: match["matchNumber"])
     return {
-        "mode": "live_community_feed",
+        "mode": "live_event_feed",
         "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "teams": teams,
-        "groups": [{"name": name, "teams": sorted(members, key=lambda team: team["name"])} for name, members in sorted(groups.items())],
+        "groups": [{"name": name, "teams": members} for name, members in sorted(groups.items())],
         "matches": matches,
     }
 
@@ -137,7 +128,7 @@ def _local_roster_details() -> list[dict[str, Any]]:
 
 def _fallback() -> dict[str, Any]:
     snapshot = get_world_cup_snapshot()
-    teams = [{"id": name.lower(), "code": name[:3].upper(), "name": name, "group": "Semi-finalists", "flag": ""} for name in snapshot["teams"]]
+    teams = [{"id": name.lower(), "code": name[:3].upper(), "name": name, "group": "Official squad list", "flag": ""} for name in snapshot["teams"]]
     matches = [
         {
             "id": match["id"],
@@ -162,7 +153,7 @@ def _fallback() -> dict[str, Any]:
         "mode": "local_fallback",
         "updatedAt": snapshot["snapshotDate"],
         "teams": teams,
-        "groups": [{"name": "Semi-finalists", "teams": teams}],
+        "groups": [{"name": "Official 48-team squad list", "teams": teams}],
         "matches": matches,
     }
 
@@ -177,16 +168,12 @@ async def get_tournament_overview(force_refresh: bool = False) -> dict[str, Any]
         if not force_refresh and _cache and _cache_expires_at > time.monotonic():
             return _cache
         try:
+            if not settings.live_event_feed_enabled:
+                raise RuntimeError("Live event feed disabled")
             async with httpx.AsyncClient(timeout=10.0, headers={"accept": "application/json"}) as client:
-                teams_response, games_response, stadiums_response = await asyncio.gather(
-                    client.get(f"{LIVE_BASE_URL}/teams"),
-                    client.get(f"{LIVE_BASE_URL}/games"),
-                    client.get(f"{LIVE_BASE_URL}/stadiums"),
-                )
-                teams_response.raise_for_status()
-                games_response.raise_for_status()
-                stadiums_response.raise_for_status()
-                overview = _normalize_live(teams_response.json(), games_response.json(), stadiums_response.json())
+                response = await client.get(LIVE_BASE_URL)
+                response.raise_for_status()
+                overview = _normalize_espn(response.json())
         except Exception as error:
             overview = _fallback()
             overview["liveError"] = str(error)
@@ -194,11 +181,11 @@ async def get_tournament_overview(force_refresh: bool = False) -> dict[str, Any]
         overview["rosters"] = _local_roster_details()
         overview["stageOrder"] = STAGE_ORDER
         overview["sources"] = {
-            "liveSchedule": f"{LIVE_BASE_URL}/teams, /games, /stadiums",
+            "liveSchedule": LIVE_BASE_URL,
             "localRoster": get_data_metadata()["sourceUrls"],
             "notice": (
-                "The 48-team schedule is a community live feed and is labelled as such. "
-                "Detailed player rosters are only shown for Auto-Gaffer's dated FIFA roster snapshot."
+                "Fixtures and scores refresh from a public live event feed every 60 seconds. "
+                "Detailed player rosters remain linked to the dated official FIFA squad list."
             ),
         }
         _cache = overview

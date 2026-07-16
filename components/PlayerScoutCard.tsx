@@ -1,6 +1,7 @@
 'use client';
 
 import type { Player } from '@/types';
+import { getTeamTheme, teamGradient } from '@/lib/teamTheme';
 
 const POSITION_STYLE: Record<Player['position'], { label: string; accent: string; bar: string }> = {
   GK: { label: 'Goalkeeper', accent: 'border-sky-400/50 bg-sky-400/10 text-sky-200', bar: 'bg-sky-400' },
@@ -17,6 +18,7 @@ function contribution(player: Player): string {
 
 export default function PlayerScoutCard({ player, onSelect }: { player: Player; onSelect?: (player: Player) => void }) {
   const style = POSITION_STYLE[player.position];
+  const teamTheme = getTeamTheme(player.team);
   const availability = player.availability_status ?? (player.isAvailable ? 'available' : 'unknown');
   const creative = Math.min(100, Math.round((player.world_cup_stats?.assists ?? 0) * 24 + player.points * 3));
   const finishing = Math.min(100, Math.round((player.world_cup_stats?.goals ?? 0) * 28 + player.premium_stats.xg_per_game * 55 + player.points * 2));
@@ -35,24 +37,29 @@ export default function PlayerScoutCard({ player, onSelect }: { player: Player; 
       }}
       className={`foil-sweep group relative overflow-hidden rounded-xl border border-outline-variant/30 bg-surface-container-low shadow-[0_16px_35px_rgba(0,0,0,0.18)] transition hover:-translate-y-1 hover:border-primary/80 hover:shadow-[0_22px_45px_rgba(15,72,57,0.2)] ${onSelect ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/70' : ''}`}
     >
-      <div className="relative min-h-36 overflow-hidden bg-[radial-gradient(circle_at_85%_10%,rgba(255,184,77,.23),transparent_36%),linear-gradient(135deg,rgba(10,46,41,.96),rgba(11,20,29,.95))] p-4">
+      <div
+        className="relative min-h-40 overflow-hidden p-4"
+        style={{ background: `radial-gradient(circle_at_85%_10%,rgba(255,255,255,.28),transparent_32%), ${teamGradient(player.team)}` }}
+      >
+        <div className="absolute inset-0 bg-slate-950/35" />
         <div className="absolute -right-4 -top-8 select-none font-display-lg text-[7rem] font-black leading-none text-white/[0.045]">
           {player.number ?? player.position}
         </div>
         <div className="relative flex items-start justify-between gap-3">
-          <span className={`rounded border px-2 py-1 font-mono-jb text-[10px] font-bold tracking-[0.16em] ${style.accent}`}>
+          <span className={`relative rounded border px-2 py-1 font-mono-jb text-[10px] font-bold tracking-[0.16em] ${style.accent}`}>
             {player.position} · {style.label.toUpperCase()}
           </span>
-          <span className="rounded-full bg-secondary px-2.5 py-1 font-mono-jb text-xs font-black text-on-secondary">
+          <span className="relative rounded-full bg-white/90 px-2.5 py-1 font-mono-jb text-xs font-black" style={{ color: teamTheme.ink }}>
             {player.points} PTS
           </span>
         </div>
         <div className="relative mt-8 flex items-end justify-between gap-3">
           <div>
-            <p className="font-label-sm text-xs uppercase tracking-[0.2em] text-primary">{player.team}</p>
-            <h3 className="mt-1 text-xl font-black leading-tight text-on-surface">{player.name}</h3>
+            <p className="font-label-sm text-xs uppercase tracking-[0.2em] text-white/85">{player.flag} {player.team}</p>
+            <h3 className="mt-1 text-xl font-black leading-tight text-white">{player.name}</h3>
+            <p className="mt-1 truncate text-[10px] font-medium text-white/75">{player.club || 'Official FIFA squad'}</p>
           </div>
-          <div className="grid h-12 w-12 place-items-center rounded-full border border-white/20 bg-black/20 text-center font-display-lg text-base font-black text-on-surface">
+          <div className="grid h-12 w-12 place-items-center rounded-full border border-white/35 bg-black/30 text-center font-display-lg text-base font-black text-white">
             {player.number ?? player.name.charAt(0)}
           </div>
         </div>
@@ -81,8 +88,12 @@ export default function PlayerScoutCard({ player, onSelect }: { player: Player; 
             {availability.replace('_', ' ')}
           </span>
           <span className="truncate text-right text-[10px] text-on-surface-variant">
-            {player.data_source === 'fifa' ? 'FIFA snapshot' : 'Auto-Gaffer model'}
+            {player.data_source === 'fifa' ? 'FIFA snapshot' : 'WCAI model'}
           </span>
+        </div>
+        <div className="flex items-center justify-between gap-2 text-[10px] text-on-surface-variant">
+          <span>#{player.number ?? '—'} · {player.official_name || player.name}</span>
+          {player.date_of_birth && <span>{player.date_of_birth}</span>}
         </div>
         {onSelect && <p className="border-t border-outline-variant/15 pt-2 text-center font-mono-jb text-[9px] font-bold uppercase tracking-[0.15em] text-primary">Open player intel ↗</p>}
       </div>

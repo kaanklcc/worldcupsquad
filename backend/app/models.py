@@ -45,6 +45,9 @@ class Player(BaseModel):
     data_source: Optional[str] = None
     data_updated_at: Optional[str] = None
     source_url: Optional[str] = None
+    official_name: Optional[str] = None
+    club: Optional[str] = None
+    date_of_birth: Optional[str] = None
     roster_status: Optional[Literal['announced', 'confirmed', 'not_available']] = None
     availability_status: Optional[Literal['available', 'doubtful', 'injured', 'suspended', 'unknown']] = None
     world_cup_stats: Optional[WorldCupStats] = None

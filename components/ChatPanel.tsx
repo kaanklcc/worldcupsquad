@@ -82,7 +82,7 @@ export default function ChatPanel({
             smart_toy
           </span>
           <h2 className="font-display-lg text-headline-md uppercase tracking-tight text-on-surface">
-            Auto-Gaffer AI
+            WCAI AI
           </h2>
         </div>
 

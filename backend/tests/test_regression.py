@@ -2,6 +2,7 @@ import base64
 import json
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,7 +12,7 @@ from app import db
 from app.agent.gemini_client import GeminiAgentClient
 from app.agent.skills import suggest_lineup
 from app.config import settings
-from app.data import get_players, get_world_cup_snapshot
+from app.data import apply_live_player_totals, get_players, get_world_cup_snapshot
 from app.main import app
 from app.mcp import client as mcp_module
 
@@ -29,10 +30,14 @@ class AutoGafferRegressionTests(unittest.TestCase):
             "x402_demo_mode": settings.x402_demo_mode,
             "x402_allow_simulated_purchases": settings.x402_allow_simulated_purchases,
             "mcp_simulation": settings.mcp_simulation,
+            "live_stats_enabled": settings.live_stats_enabled,
+            "live_event_feed_enabled": settings.live_event_feed_enabled,
         }
         settings.x402_demo_mode = True
         settings.x402_allow_simulated_purchases = False
         settings.mcp_simulation = True
+        settings.live_stats_enabled = False
+        settings.live_event_feed_enabled = False
         mcp_module._mcp_client = None
 
     @classmethod
@@ -301,7 +306,9 @@ class AutoGafferRegressionTests(unittest.TestCase):
     def test_worldcup_snapshot_exposes_provenance_and_fixture_scope(self):
         snapshot = get_world_cup_snapshot()
         self.assertEqual(snapshot["tournament"], "FIFA World Cup 2026")
-        self.assertEqual(snapshot["playerCount"], 104)
+        self.assertEqual(snapshot["playerCount"], 1248)
+        self.assertEqual(len(snapshot["teams"]), 48)
+        self.assertEqual(sorted(Counter(player.team for player in get_players()).values()), [26] * 48)
         self.assertEqual(len(snapshot["matches"]), 2)
         self.assertTrue(snapshot["snapshotDate"])
         self.assertTrue(snapshot["sourceUrls"])
@@ -318,7 +325,26 @@ class AutoGafferRegressionTests(unittest.TestCase):
         self.assertEqual(len(payload["model"]["metrics"]), 5)
         self.assertEqual(len(payload["model"]["trend"]), 5)
         self.assertIn(payload["verified"]["tournamentStats"]["data_status"], {"verified", "not_available"})
-        self.assertIn("Auto-Gaffer scouting estimates", payload["provenance"]["notice"])
+        self.assertEqual(payload["verified"]["officialProfile"]["team"], player.team)
+        self.assertEqual(payload["verified"]["officialProfile"]["shirtNumber"], player.number)
+        self.assertIn(player.name, payload["model"]["scoutBrief"])
+        self.assertNotIn("based on position and official FIFA final-squad membership", payload["model"]["scoutBrief"])
+        self.assertIn("WCAI scouting estimates", payload["provenance"]["notice"])
+
+    def test_live_goal_assist_overlay_marks_every_rostered_player_with_a_tally(self):
+        messi = next(player for player in get_players() if "Messi" in player.name)
+        players = apply_live_player_totals({
+            "available": True,
+            "updated_at": "2026-07-16T19:00:00Z",
+            "source_url": "https://example.test/live-events",
+            "fifa_source_url": "https://example.test/fifa-stats",
+            "events_processed": 102,
+            "totals": {"lionelmessi": {"goals": 8, "assists": 4}},
+        })
+        refreshed_messi = next(player for player in players if player.id == messi.id)
+        self.assertEqual(refreshed_messi.world_cup_stats.goals, 8)
+        self.assertEqual(refreshed_messi.world_cup_stats.assists, 4)
+        self.assertTrue(all(player.world_cup_stats.data_status == "verified" for player in players))
 
     def test_agent_conversation_never_builds_a_lineup_and_named_replacement_is_single_player(self):
         agent = GeminiAgentClient()
@@ -348,7 +374,13 @@ class AutoGafferRegressionTests(unittest.TestCase):
             True,
         )
         self.assertIsNone(discussion.suggestedAction)
-        self.assertIn("konu", discussion.message.lower())
+        self.assertIn("conversational preview", discussion.message.lower())
+
+        global_discussion = agent._rule_based_fallback(
+            "Brezilya Japonya macini kim yener, kimi almaliyim?", [], True
+        )
+        self.assertIsNone(global_discussion.suggestedAction)
+        self.assertIn("Brazil vs Japan", global_discussion.message)
 
     def test_tournament_hq_endpoint_exposes_schedule_and_roster_provenance(self):
         async def fake_overview(force_refresh=False):
@@ -382,7 +414,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         payload = response.json()
-        self.assertEqual(payload["briefType"], "gaffer_matchday_brief")
+        self.assertEqual(payload["briefType"], "wcai_matchday_brief")
         self.assertEqual(payload["lineup"]["formation"], "3-5-2")
         self.assertEqual(len(payload["lineup"]["playerIds"]), 11)
         self.assertLessEqual(payload["lineup"]["budgetUsed"], payload["lineup"]["maxBudget"])

@@ -1,5 +1,5 @@
 """
-MCP (Model Context Protocol) server for Auto-Gaffer squad tools.
+MCP (Model Context Protocol) server for WCAI squad tools.
 Exposes squad management tools that can be called via the MCP protocol.
 """
 from mcp.server import Server
@@ -20,9 +20,9 @@ from ..models import Player
 
 
 class AutoGafferMCPServer:
-    """MCP server exposing Auto-Gaffer squad management tools."""
+    """MCP server exposing WCAI squad management tools."""
 
-    def __init__(self, server_name: str = "auto-gaffer-mcp"):
+    def __init__(self, server_name: str = "wcai-mcp"):
         self.server = Server(server_name)
         self._setup_tools()
 
@@ -280,7 +280,7 @@ class AutoGafferMCPServer:
                 read_stream,
                 write_stream,
                 InitializationOptions(
-                    server_name="auto-gaffer-mcp",
+                    server_name="wcai-mcp",
                     server_version="1.0.0",
                     capabilities=self.server.get_capabilities(
                         notification_options=NotificationOptions(),
@@ -292,7 +292,7 @@ class AutoGafferMCPServer:
 
 # Convenience function to run the server
 def run_mcp_server():
-    """Run the Auto-Gaffer MCP server."""
+    """Run the WCAI MCP server."""
     import asyncio
     server = AutoGafferMCPServer()
     asyncio.run(server.run())

@@ -1,6 +1,6 @@
-# Auto-Gaffer Backend
+# WCAI Backend
 
-Python FastAPI backend for the Auto-Gaffer World Cup 2026 Fantasy Football Manager.
+Python FastAPI backend for the WCAI World Cup 2026 Fantasy Football Manager.
 
 ## Technologies
 
@@ -14,9 +14,9 @@ Python FastAPI backend for the Auto-Gaffer World Cup 2026 Fantasy Football Manag
 
 ### API Endpoints
 
-- `GET  /api/players` - Get the 104-player FIFA roster snapshot for Argentina, England, France, and Spain
+- `GET  /api/players` - Get FIFA's official 1,248-player final-squad snapshot for all 48 teams
 - `GET  /api/players/meta` - Get roster snapshot date and FIFA source URLs
-- `GET  /api/worldcup/snapshot` - Get dated semifinal fixtures and provenance
+- `GET  /api/worldcup/snapshot` - Get dated roster/fixture scope and provenance
 - `GET  /api/access/status` - Read persistent membership, Match Pass and wallet access
 - `POST /api/access/unlock` - Activate Kaan's free judge demo or process x402 access
 - `POST /api/access/wallet` - Validate and save an Injective/EVM wallet

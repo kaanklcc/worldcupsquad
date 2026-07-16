@@ -1,5 +1,5 @@
 """
-Auto-Gaffer agent skills as Gemini function-calling tools.
+WCAI agent skills as Gemini function-calling tools.
 These are the skills the LLM can invoke to answer user queries.
 """
 import unicodedata
@@ -10,7 +10,7 @@ from functools import wraps
 from google import genai
 from google.genai import types
 
-from ..data import get_players
+from ..data import get_players, get_team_aliases
 from ..models import Player, SquadSlot, SuggestedAction
 
 
@@ -35,20 +35,7 @@ def extract_player_ids_from_prompt(prompt: str) -> List[str]:
 def extract_position_team_preferences(prompt: str) -> Dict[str, List[str]]:
     """Read nearby team/position phrases such as 'Spain defence' or 'France midfield'."""
     query = _normalize(prompt)
-    team_aliases = {
-        'argentina': 'Argentina',
-        'arjantin': 'Argentina',
-        'albiceleste': 'Argentina',
-        'england': 'England',
-        'ingiltere': 'England',
-        'three lions': 'England',
-        'france': 'France',
-        'fransa': 'France',
-        'les bleus': 'France',
-        'spain': 'Spain',
-        'ispanya': 'Spain',
-        'la roja': 'Spain',
-    }
+    team_aliases = get_team_aliases()
     position_terms = {
         'DF': ('defans', 'savunma', 'defence', 'defense', 'back line'),
         'MF': ('orta saha', 'midfield', 'middle'),
@@ -486,7 +473,7 @@ def suggest_player_replacement(
             f"Both are {sell_player.position}; projected squad cost is {projected_cost:.1f}M / {max_budget:g}M. "
             f"Fantasy-points delta: {point_delta:+d}. "
             f"Verified World Cup contribution delta: {verified_delta:+.1f}. "
-            f"xG is an Auto-Gaffer model estimate, not an official FIFA statistic."
+            f"xG is a WCAI model estimate, not an official FIFA statistic."
         ),
     }
 
@@ -505,7 +492,7 @@ def suggest_lineup(
 
     The result is a proposal only. It does not mutate the user's squad. When
     two team names are present in ``match_context``, candidates are restricted
-    to those teams; otherwise the four current semi-finalist rosters are used.
+    to those teams; otherwise all 48 FIFA-confirmed World Cup squad pools are used.
     Explicitly requested players are always included when they are available.
     ``position_team_preferences`` can focus a position on a team, while
     ``strategy`` uses verified World Cup contributions and app fantasy values
@@ -525,20 +512,7 @@ def suggest_lineup(
         return {'error': f'Unsupported lineup strategy: {strategy}'}
 
     context = _normalize(match_context)
-    team_aliases = {
-        'argentina': 'Argentina',
-        'arjantin': 'Argentina',
-        'albiceleste': 'Argentina',
-        'england': 'England',
-        'ingiltere': 'England',
-        'three lions': 'England',
-        'france': 'France',
-        'fransa': 'France',
-        'les bleus': 'France',
-        'spain': 'Spain',
-        'ispanya': 'Spain',
-        'la roja': 'Spain',
-    }
+    team_aliases = get_team_aliases()
     all_players = get_players()
     catalog = {player.id: player for player in all_players}
     required_ids = list(dict.fromkeys(required_player_ids or []))
@@ -562,7 +536,7 @@ def suggest_lineup(
         for alias, team in team_aliases.items()
         if _normalize(alias) in context
     }
-    teams = mentioned_teams if len(mentioned_teams) >= 2 else {'Argentina', 'England', 'France', 'Spain'}
+    teams = mentioned_teams if len(mentioned_teams) >= 2 else {player.team for player in all_players}
     # An explicit player request has priority over an inferred match filter.
     teams.update(player.team for player in required_players)
 
@@ -604,19 +578,21 @@ def suggest_lineup(
         )
         required_candidates = required_by_position[position]
         required_candidate_ids = {player.id for player in required_candidates}
-        preferred_candidate_ids = {
-            player.id for player in preferred_candidates
-        }
-        prioritized_candidates = (
+        # Keep budget-efficient alternatives beside the highest-rated names.
+        # With a 48-team pool, the top-ranked 14 alone can all be unaffordable
+        # under a manager's 100M cap.
+        affordable_candidates = sorted(candidates, key=lambda player: (player.price, -player.points))[:10]
+        mixed_candidates = (
             required_candidates
             + [player for player in preferred_candidates if player.id not in required_candidate_ids]
-            + [
-                player for player in ranked_candidates
-                if player.id not in required_candidate_ids
-                and player.id not in preferred_candidate_ids
-            ]
+            + ranked_candidates[:7]
+            + affordable_candidates
+            + ranked_candidates[7:]
         )
-        unique_candidates = list({player.id: player for player in prioritized_candidates}.values())
+        unique_candidates = list({
+            player.id: player
+            for player in mixed_candidates
+        }.values())
         candidates_by_position[position] = (
             unique_candidates[:14]
         )
@@ -688,9 +664,8 @@ def suggest_lineup(
         'required_player_ids': required_ids,
         'strategy': strategy,
         'reasoning': (
-            f'{formation} için mevcut FIFA 2026 kadro snapshotından, '
-            f'{", ".join(sorted(teams))} takımları arasından bütçe geçerli '
-            f'11 oyuncu seçildi. Bu bir tahmini fantasy XI; resmi ilk 11 değildir.'
+            f'A budget-valid 11 was selected for {formation} from the current FIFA 2026 squad snapshot, '
+            f'considering {", ".join(sorted(teams))}. This is a projected fantasy XI, not an official starting XI.'
         ),
     }
 

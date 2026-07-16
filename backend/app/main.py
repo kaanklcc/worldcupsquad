@@ -1,5 +1,5 @@
 """
-Auto-Gaffer Backend - Python FastAPI Server
+WCAI Backend - Python FastAPI Server
 
 A World Cup 2026 Fantasy Football Manager backend with:
 - Gemini LLM-powered AI consultant with function-calling
@@ -18,7 +18,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     
     app = FastAPI(
-        title="Auto-Gaffer API",
+        title="WCAI API",
         description="World Cup 2026 Fantasy Football Manager Backend",
         version="1.0.0",
         docs_url="/docs",
@@ -54,7 +54,7 @@ def create_app() -> FastAPI:
     async def root():
         """Root endpoint with API information."""
         return {
-            "name": "Auto-Gaffer API",
+            "name": "WCAI API",
             "version": "1.0.0",
             "docs": "/docs",
             "status": "operational",

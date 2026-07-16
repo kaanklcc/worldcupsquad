@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Player } from '@/types';
+import { getTeamTheme, teamGradient } from '@/lib/teamTheme';
 
 interface PlayerSelectionModalProps {
   isOpen: boolean;
@@ -26,12 +27,18 @@ export default function PlayerSelectionModal({
 }: PlayerSelectionModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'price' | 'points'>('points');
+  const [teamFilter, setTeamFilter] = useState('all');
+  const teams = useMemo(() => [...new Set(players.map((player) => player.team))].sort(), [players]);
 
   const filteredPlayers = useMemo(() => {
     let result = players.filter((p) => !currentSquadIds.includes(p.id));
 
     if (targetPosition) {
       result = result.filter((p) => p.position === targetPosition);
+    }
+
+    if (teamFilter !== 'all') {
+      result = result.filter((p) => p.team === teamFilter);
     }
 
     if (searchTerm) {
@@ -42,7 +49,7 @@ export default function PlayerSelectionModal({
     }
 
     return result.sort((a, b) => b[sortBy] - a[sortBy]);
-  }, [players, targetPosition, currentSquadIds, searchTerm, sortBy]);
+  }, [players, targetPosition, currentSquadIds, searchTerm, sortBy, teamFilter]);
 
   if (!isOpen) return null;
 
@@ -80,7 +87,7 @@ export default function PlayerSelectionModal({
         </div>
 
         {/* Filters */}
-        <div className="px-5 py-3 border-b border-outline-variant/20 flex gap-4 bg-surface-container">
+        <div className="px-5 py-3 border-b border-outline-variant/20 flex flex-wrap gap-3 bg-surface-container">
           <div className="relative flex-1">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">
               search
@@ -93,6 +100,15 @@ export default function PlayerSelectionModal({
               className="w-full bg-surface-dim border border-outline-variant rounded-md py-1.5 pl-9 pr-3 text-sm text-on-surface font-body focus:border-secondary focus:ring-1 focus:ring-secondary outline-none"
             />
           </div>
+          <select
+            value={teamFilter}
+            onChange={(event) => setTeamFilter(event.target.value)}
+            aria-label="Filter players by national team"
+            className="max-w-44 rounded-md border border-outline-variant bg-surface-dim px-2 py-1.5 text-xs text-on-surface outline-none focus:border-secondary"
+          >
+            <option value="all">All 48 teams</option>
+            {teams.map((team) => <option key={team} value={team}>{team}</option>)}
+          </select>
           <div className="flex bg-surface-dim rounded-md border border-outline-variant overflow-hidden font-label-sm text-label-sm">
             <button
               onClick={() => setSortBy('points')}
@@ -127,6 +143,7 @@ export default function PlayerSelectionModal({
             <div className="flex flex-col gap-1">
               {filteredPlayers.map((player) => {
                 const exceedsBudget = player.price > remainingBudget;
+                const teamTheme = getTeamTheme(player.team);
 
                 return (
                   <button
@@ -136,18 +153,17 @@ export default function PlayerSelectionModal({
                       onSelectPlayer(player);
                     }}
                     disabled={exceedsBudget || !player.isAvailable}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left group ${
+                    className={`relative w-full overflow-hidden flex items-center gap-3 p-3 rounded-lg border transition-all text-left group ${
                       !player.isAvailable 
-                        ? 'opacity-60 border-outline-variant/10 hover:border-outline-variant/30 cursor-pointer' 
-                        : !player.isAvailable
                         ? 'border-error/20 bg-error/5 opacity-50 cursor-not-allowed'
                         : exceedsBudget
                         ? 'border-error/20 bg-error/5 opacity-50 cursor-not-allowed'
                         : 'border-outline-variant/20 hover:border-secondary/50 bg-surface hover:bg-surface-container-high cursor-pointer'
                     }`}
                   >
+                    <span className="absolute inset-y-0 left-0 w-1" style={{ background: teamGradient(player.team) }} />
                     {/* Position Badge */}
-                    <div className="w-10 h-10 rounded-md flex items-center justify-center font-label-sm text-label-sm font-bold bg-surface-container-highest border border-outline-variant/30 text-primary">
+                    <div className="w-10 h-10 rounded-md flex items-center justify-center font-label-sm text-label-sm font-bold text-white shadow-sm" style={{ background: teamTheme.primary }}>
                       {player.position}
                     </div>
 
@@ -176,6 +192,7 @@ export default function PlayerSelectionModal({
                           WC26 · {player.data_updated_at ?? 'snapshot'}
                         </span>
                       </div>
+                      <p className="mt-1 truncate text-[10px] text-on-surface-variant">{player.club || 'Official FIFA final squad'}{player.date_of_birth ? ` · ${player.date_of_birth}` : ''}</p>
                     </div>
 
                     {/* Stats */}

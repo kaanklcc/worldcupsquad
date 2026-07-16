@@ -1,20 +1,24 @@
-# Auto-Gaffer
+# WCAI
 
-Auto-Gaffer is a membership-first World Cup 2026 fantasy football command centre built for the Injective Global Cup Hackathon. A fan builds a squad with a USDC-denominated budget, unlocks Gemini and Deep Tactical Analytics through membership or x402, and approves structured lineup/transfer actions through an MCP tool.
+WCAI is a membership-first World Cup 2026 fantasy football command centre built for the Injective Global Cup Hackathon. A fan builds a squad with a USDC-denominated budget, unlocks Gemini and Deep Tactical Analytics through membership or x402, and approves structured lineup/transfer actions through an MCP tool.
 
-The product solves a simple fan problem: World Cup fantasy decisions are spread across player stats, tactical context, and funding actions. Auto-Gaffer brings those decisions into one explainable workflow.
+The product solves a simple fan problem: World Cup fantasy decisions are spread across player stats, tactical context, and funding actions. WCAI brings those decisions into one explainable workflow.
+
+### World Cup data provenance
+
+The catalog is generated from FIFA's [official final Squad Lists PDF](https://fdp.fifa.org/assetspublic/ce281/pdf/SquadLists-English.pdf): 48 confirmed squads and 1,248 players, captured in the dated snapshot. FIFA's [tournament teams page](https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/teams) is kept as the corresponding team-level source. Club, shirt number, role and squad membership are source-backed. Goals and assists are refreshed every minute from named live match events, while FIFA's [official player-statistics page](https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/statistics/player-statistics) remains linked as the canonical reference. Prices, fantasy points, xG and scout ratings are visibly labelled WCAI estimates.
 
 ## What the demo does
 
 - Build a squad on an interactive pitch with 4-3-3, 4-2-3-1, 3-5-2, 4-4-2, and 5-3-2 formations.
-- Search the 104-player FIFA-announced rosters of the four 2026 semi-finalists (Argentina, England, France, Spain) by position, price, availability, and points.
+- Search all 1,248 players in FIFA's confirmed 26-player final squads for all 48 World Cup 2026 teams by position, team, price, availability, and points.
 - Unlock every Gemini conversation and Analytics request through a server-side Pro membership or a 15-minute x402 Match Pass. Locked prompts never reach Gemini and instead return a complete feature/access explanation.
 - Ask the entitled Gemini-powered tactical assistant to search players, rank positions, analyse the squad, read the dated World Cup snapshot, and propose a structured starting XI.
 - Confirm an AI lineup in the UI to apply the exact player IDs and formation after server-side budget and position validation.
-- Open Matchday to load the dated FIFA fixture snapshot for the two semi-finals; unknown scores and official starting XIs are not invented.
-- Open **Tournament HQ** for a 48-team World Cup directory: group overview, knockout bracket, filterable fixtures, and squad-scoped Scout Cards. The schedule is clearly marked as a community live feed; player-level data remains limited to dated FIFA roster snapshots.
+- Open Matchday for a one-minute-refresh live event-feed fixture and score view; unknown scores and official starting XIs are not invented.
+- Open **Tournament HQ** for a 48-team World Cup directory: group overview, knockout bracket, filterable fixtures, and squad-scoped Scout Cards. The schedule is clearly marked as a community live feed; all player records come from FIFA's dated official final-squad list.
 - Compare players in the original **Scout Card** view: price, verified goals/assists where available, model xG, points, readiness and source status are kept distinct.
-- Click any selected player on the main pitch to open an individual **Player Intel Card**. It fetches player-specific source metadata plus a clearly labelled Auto-Gaffer model layer: radar, five-point signal trend, tactical attributes and scout brief. The small left swap control preserves replacement; the red control removes the player.
+- Click any selected player on the main pitch to open an individual **Player Intel Card**. It fetches player-specific source metadata plus a clearly labelled WCAI model layer: radar, five-point signal trend, tactical attributes and scout brief. The small left swap control preserves replacement; the red control removes the player.
 - Run one unified Deep Tactical Analytics flow from the sidebar or chat panel. It evaluates formation balance, authenticated budget, verified World Cup contributions, model xG, availability, injury risk and price efficiency before producing an executable action.
 - Open **Gaffer Matchday Brief** for a source-aware pre-match cockpit: fixture context, budget-valid XI, captain/vice-captain signals, risk flags and two tactical scenarios.
 - Use the premium **What-if Tactical Lab** to compare all supported formations against the same server-side budget without mutating the saved squad; only a separate explicit apply action can change the pitch.
@@ -28,7 +32,7 @@ The product solves a simple fan problem: World Cup fantasy decisions are spread 
 
 ## Hackathon technology mapping
 
-| Injective technology | How Auto-Gaffer uses it | Current demo status |
+| Injective technology | How WCAI uses it | Current demo status |
 | --- | --- | --- |
 | x402 | Membership and Match Pass purchases expose an HTTP 402 challenge with the x402 v2 `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, and `PAYMENT-RESPONSE` flow. Entitlements are stored server-side and protected endpoints never trust a browser premium flag. | Kaan has a username-scoped, zero-charge demo grant. All other accounts remain payment-gated by default; optional simulated purchases require an additional explicit environment flag. Configure a compatible facilitator and receiver for settlement. |
 | USDC CCTP | The backing flow models source burn → Circle attestation → destination mint and increases the Injective budget by 20 USDC. | The current local flow returns a labelled deterministic simulation; production wallet signing is the next integration step. |
@@ -99,7 +103,7 @@ Open http://localhost:3000. The frontend expects the backend at `http://localhos
 
 1. Log in with the Kaan judge/demo account. Its AI, Analytics and Finance access starts locked.
 2. Open **Membership Locked** or **Unlock Deep Tactical Analytics**, then select **Activate Free Demo Membership**. The receipt explicitly says that no money was charged.
-3. Add players to the pitch. The picker contains the four semi-finalist FIFA roster snapshots and the backend re-validates catalog, position, availability, duplicates, and budget.
+3. Add players to the pitch. The picker exposes all 48 official FIFA squad pools and includes a national-team filter; the backend re-validates catalog, position, availability, duplicates, and budget.
 4. Ask the AI about a player, a position, the current matchday, or a starting XI such as “Arjantin–İngiltere için 3-5-2 kadro öner”.
 5. Review the structured lineup card and choose **Apply Lineup** or **Reject**. The exact IDs are persisted only after confirmation.
 6. Open **Analytics** or run **Deep Tactical Analytics**. Both use the same richer analysis pipeline.

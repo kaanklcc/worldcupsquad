@@ -19,6 +19,9 @@ export interface Player {
   data_source?: string;
   data_updated_at?: string;
   source_url?: string;
+  official_name?: string;
+  club?: string;
+  date_of_birth?: string;
   roster_status?: 'announced' | 'confirmed' | 'not_available';
   availability_status?: 'available' | 'doubtful' | 'injured' | 'suspended' | 'unknown';
   world_cup_stats?: {
@@ -28,6 +31,8 @@ export interface Player {
     goals?: number;
     assists?: number;
     data_status: 'verified' | 'not_available';
+    source_url?: string;
+    updated_at?: string;
   };
 }
 
@@ -43,6 +48,15 @@ export interface PlayerIntel {
     rosterStatus: string;
     availabilityStatus: string;
     tournamentStats: NonNullable<Player['world_cup_stats']>;
+    officialProfile: {
+      officialName: string;
+      team: string;
+      shirtNumber?: number;
+      listedClub?: string;
+      dateOfBirth?: string;
+      source?: string;
+      snapshotDate?: string;
+    };
   };
   model: {
     isEstimate: true;
@@ -203,7 +217,7 @@ export interface TournamentRoster {
 }
 
 export interface TournamentOverview {
-  mode: 'live_community_feed' | 'local_fallback';
+  mode: 'live_event_feed' | 'live_community_feed' | 'local_fallback';
   updatedAt: string;
   liveError?: string;
   teams: TournamentTeam[];
@@ -230,7 +244,7 @@ export interface ChatMessage {
 
 export interface MatchdayBriefResponse {
   success: boolean;
-  briefType: 'gaffer_matchday_brief';
+  briefType: 'wcai_matchday_brief';
   match: {
     id: string;
     stage: string;

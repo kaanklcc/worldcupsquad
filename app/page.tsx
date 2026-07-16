@@ -30,7 +30,7 @@ function createIdempotencyKey(action: string): string {
   const suffix = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `gaffer-${action}-${suffix}`;
+  return `wcai-${action}-${suffix}`;
 }
 
 function createSquadForFormation(formation: string): SquadSlot[] {
@@ -211,6 +211,25 @@ export default function HomePage() {
     }
   }, [fetchAccessStatus, fetchSquadLineup]);
 
+  // Keep player cards, prices and live World Cup goal/assist tallies current
+  // without forcing the user to reload the dashboard. The API itself caches
+  // provider requests for one minute, so this interval never polls the source
+  // more often than the server-side freshness policy permits.
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const refreshPlayers = () => {
+      fetch(`${API_URL}/api/players`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`Player refresh failed (${res.status})`);
+          return res.json() as Promise<Player[]>;
+        })
+        .then((data) => setPlayers(data))
+        .catch((error) => console.error('Live player refresh failed:', error));
+    };
+    const interval = window.setInterval(refreshPlayers, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   // ─── Derived ────────────────────────────────────────────────────────────
   const squadPlayerIds = useMemo(
     () => [
@@ -306,7 +325,7 @@ export default function HomePage() {
       {
         id: `msg-${Date.now()}-remove`,
         role: 'assistant',
-        content: `🗑️ **${playerName}** ${isBench ? 'yedeklerden' : 'sahadaki kadrodan'} çıkarıldı.`,
+        content: `🗑️ **${playerName}** was removed from the ${isBench ? 'bench' : 'starting squad'}.`,
       },
     ]);
   }, []);
@@ -365,14 +384,14 @@ export default function HomePage() {
         {
           id: `msg-${Date.now()}-finance-locked`,
           role: 'assistant',
-          content: '🔒 **Injective Finance kilitli**\n\nCCTP ile USDC backing yalnızca aktif Pro üyelik ve kaydedilmiş bir Injective wallet ile kullanılabilir.',
+          content: '🔒 **Injective Finance is locked**\n\nCCTP USDC backing requires an active Pro membership and a saved Injective wallet.',
           provider: 'locked',
         },
       ]);
       return;
     }
     if (!accessStatus.walletAddress) {
-      setAccessError('CCTP kullanmadan önce Injective wallet adresini bağla ve kaydet.');
+      setAccessError('Connect and save an Injective wallet address before using CCTP.');
       setAccessModalOpen(true);
       return;
     }
@@ -403,7 +422,7 @@ export default function HomePage() {
           {
             id: `msg-${Date.now()}`,
             role: 'assistant',
-            content: `⛓️ **CCTP Bridge Başarılı!**\n\n${data.message}\n\nTx Hash: \`${data.txHash}\`\n\nOyun bütçeniz artık **${budget + data.newBudgetBonus}M**.${data.simulated ? '\n\n_Not: Bu işlem demo modunda simüle edildi._' : ''}`,
+            content: `⛓️ **CCTP Bridge complete**\n\n${data.message}\n\nTx Hash: \`${data.txHash}\`\n\nYour squad budget is now **${budget + data.newBudgetBonus}M**.${data.simulated ? '\n\n_Note: this operation is simulated in demo mode._' : ''}`,
           },
         ]);
       }
@@ -411,7 +430,7 @@ export default function HomePage() {
       const message = err instanceof Error ? err.message : 'CCTP bridge failed.';
       setMessages((prev) => [
         ...prev,
-        { id: `msg-${Date.now()}-cctp-error`, role: 'assistant', content: `❌ CCTP işlemi başarısız: ${message}` },
+        { id: `msg-${Date.now()}-cctp-error`, role: 'assistant', content: `❌ CCTP operation failed: ${message}` },
       ]);
     } finally {
       setCctpLoading(false);
@@ -469,13 +488,13 @@ export default function HomePage() {
           setPendingAction(data.suggestedAction);
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Bilinmeyen bir hata.';
+        const message = err instanceof Error ? err.message : 'Unknown error.';
         setMessages((prev) => [
           ...prev,
           {
             id: `msg-${Date.now()}-err`,
             role: 'assistant',
-            content: `❌ AI danışmanı yanıt veremedi: ${message}`,
+            content: `❌ WCAI could not respond: ${message}`,
           },
         ]);
       } finally {
@@ -499,7 +518,7 @@ export default function HomePage() {
         {
           id: `msg-matchday-error-${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ Matchday Brief yüklenemedi: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          content: `⚠️ Matchday Brief could not be loaded: ${error instanceof Error ? error.message : 'Unknown error'}`,
         },
       ]);
     }
@@ -514,7 +533,7 @@ export default function HomePage() {
         {
           id: `msg-lab-locked-${Date.now()}`,
           role: 'assistant',
-          content: '🔒 **Tactical Lab kilitli**\n\nWhat-if diziliş karşılaştırması, bütçe optimizasyonu ve kadroyu değiştirmeden senaryo testleri Pro üyelik veya x402 Match Pass ile açılır.',
+          content: '🔒 **Tactical Lab is locked**\n\nWhat-if formation comparisons, budget optimisation and non-mutating scenario tests require Pro membership or an x402 Match Pass.',
           provider: 'locked',
         },
       ]);
@@ -530,7 +549,7 @@ export default function HomePage() {
           formation,
           strategy: 'attacking',
           squadPlayerIds,
-          matchContext: 'France Spain England Argentina',
+          matchContext: 'FIFA World Cup 2026 confirmed 48-team squad pool',
         }),
       });
       setTacticalLab(data);
@@ -540,7 +559,7 @@ export default function HomePage() {
         {
           id: `msg-lab-error-${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ Tactical Lab çalıştırılamadı: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          content: `⚠️ Tactical Lab could not run: ${error instanceof Error ? error.message : 'Unknown error'}`,
         },
       ]);
     }
@@ -572,7 +591,7 @@ export default function HomePage() {
           {
             id: `msg-finance-locked-${Date.now()}`,
             role: 'assistant',
-            content: '🔒 **Finance & Wallet erişimi kilitli**\n\nInjective wallet yönetimi ve CCTP USDC backing aktif Pro Membership gerektirir. Kaan demo hesabında üyeliği ücretsiz etkinleştirebilirsin.',
+            content: '🔒 **Finance & Wallet access is locked**\n\nInjective wallet management and CCTP USDC backing require an active Pro membership. The Kaan demo account can activate membership at no charge.',
             provider: 'locked',
           },
         ]);
@@ -624,10 +643,10 @@ export default function HomePage() {
           id: `msg-access-${Date.now()}`,
           role: 'assistant',
           content:
-            `✅ **Erişim etkinleştirildi**\n\n${data.message}\n` +
+            `✅ **Access activated**\n\n${data.message}\n` +
             `Plan: **${data.membershipActive ? data.membershipTier : 'x402 Match Pass'}**\n` +
             `Receipt: \`${data.receipt}\`` +
-            `${data.simulated ? '\n\n_Not: Bu hackathon demo işlemidir; gerçek para kesilmedi._' : ''}`,
+            `${data.simulated ? '\n\n_Note: this is a hackathon demo operation; no real funds were charged._' : ''}`,
           isPremium: true,
         },
       ]);
@@ -675,7 +694,7 @@ export default function HomePage() {
 
     if (!localStorage.getItem('token')) {
       setSyncStage('error');
-      setSyncError('Oturum bulunamadı. Lütfen tekrar giriş yapın.');
+      setSyncError('No active session was found. Please sign in again.');
       return;
     }
 
@@ -686,7 +705,7 @@ export default function HomePage() {
       setSyncTxHash(`inj_squad_sync_${Date.now().toString(16)}`);
     } catch (err) {
       setSyncStage('error');
-      setSyncError(err instanceof Error ? err.message : 'Kadronuz kaydedilemedi.');
+      setSyncError(err instanceof Error ? err.message : 'Your squad could not be saved.');
     }
   }, [saveSquadSnapshot]);
 
@@ -773,19 +792,19 @@ export default function HomePage() {
               id: `msg-${Date.now()}-lineup`,
               role: 'assistant',
               content:
-                `✅ **AI kadrosu uygulandı**\n\n${receipt.message}\n` +
+                `✅ **AI lineup applied**\n\n${receipt.message}\n` +
                 `Formation: **${receipt.formation}**\n` +
-                `Oyuncular: **${receipt.appliedPlayerIds.length}**\n` +
+                `Players: **${receipt.appliedPlayerIds.length}**\n` +
                 `MCP receipt: ${String((receipt.mcpReceipt as Record<string, unknown> | undefined)?.tx_hash ?? 'confirmed')}` +
-                `${receipt.simulated ? '\n_Not: MCP işlemi demo transportunda simüle edildi._' : ''}`,
+                `${receipt.simulated ? '\n_Note: the MCP operation is simulated in demo transport._' : ''}`,
             },
           ]);
           setPendingAction(null);
         } catch (err) {
-          const message = err instanceof Error ? err.message : 'Kadro uygulanamadı.';
+          const message = err instanceof Error ? err.message : 'The lineup could not be applied.';
           setMessages((prev) => [
             ...prev,
-            { id: `msg-${Date.now()}-lineup-error`, role: 'assistant', content: `❌ Kadro reddedildi: ${message}` },
+            { id: `msg-${Date.now()}-lineup-error`, role: 'assistant', content: `❌ Lineup rejected: ${message}` },
           ]);
         } finally {
           setActionExecuting(false);
@@ -833,19 +852,19 @@ export default function HomePage() {
             id: `msg-${Date.now()}-mcp`,
             role: 'assistant',
             content:
-              `🔗 **MCP Transfer Onaylandı**\n\n` +
-              `❌ Satıldı: **${sellPlayer.name}** (${sellPlayer.price}M)\n` +
-              `✅ Alındı: **${buyPlayer.name}** (${buyPlayer.price}M)\n\n` +
+              `🔗 **MCP Transfer confirmed**\n\n` +
+              `❌ Sold: **${sellPlayer.name}** (${sellPlayer.price}M)\n` +
+              `✅ Signed: **${buyPlayer.name}** (${buyPlayer.price}M)\n\n` +
               `${receipt.message}\n` +
-              `Receipt: \`${receipt.txHash}\`${receipt.simulated ? '\n\n_Not: MCP işlemi demo transportunda simüle edildi._' : ''}`,
+              `Receipt: \`${receipt.txHash}\`${receipt.simulated ? '\n\n_Note: the MCP operation is simulated in demo transport._' : ''}`,
           },
         ]);
         setPendingAction(null);
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Transfer gerçekleştirilemedi.';
+        const message = err instanceof Error ? err.message : 'The transfer could not be completed.';
         setMessages((prev) => [
           ...prev,
-          { id: `msg-${Date.now()}-mcp-error`, role: 'assistant', content: `❌ Transfer reddedildi: ${message}` },
+          { id: `msg-${Date.now()}-mcp-error`, role: 'assistant', content: `❌ Transfer rejected: ${message}` },
         ]);
       } finally {
         setActionExecuting(false);
@@ -864,7 +883,7 @@ export default function HomePage() {
       {
         id: `msg-${Date.now()}-action-rejected`,
         role: 'assistant',
-        content: `🚫 **Öneri reddedildi**\n\n${actionLabel} uygulanmadı; mevcut kadron değişmeden korundu.`,
+        content: `🚫 **Proposal rejected**\n\n${actionLabel} was not applied; your current squad is unchanged.`,
       },
     ]);
   }, [formation]);
@@ -948,7 +967,7 @@ export default function HomePage() {
           <footer className="border-t border-slate-200 bg-white/50 px-4 py-4 flex-shrink-0">
             <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 sm:flex-row">
               <p className="text-xs text-slate-500 font-label-sm">
-                ⚽ Auto-Gaffer — Injective Global Cup Hackathon 2026
+                ⚽ WCAI — Injective Global Cup Hackathon 2026
               </p>
               <div className="flex items-center gap-4 text-[10px] text-slate-400 font-label-sm">
                 <span>Built on Injective</span>

@@ -36,7 +36,7 @@ export default function Header({
           <span className="text-xl">⚽</span>
         </div>
         <span className="font-display-lg text-xl text-primary drop-shadow-[0_0_8px_rgba(223,181,59,0.5)] tracking-tight">
-          AUTO-GAFFER
+          WCAI
         </span>
       </div>
 

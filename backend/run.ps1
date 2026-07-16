@@ -1,4 +1,4 @@
-Write-Host "Starting Auto-Gaffer Backend..." -ForegroundColor Yellow
+Write-Host "Starting WCAI Backend..." -ForegroundColor Yellow
 Write-Host ""
 
 if (-not (Test-Path "venv")) {

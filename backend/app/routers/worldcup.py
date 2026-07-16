@@ -1,10 +1,13 @@
 """Current World Cup 2026 snapshot and matchday briefing endpoints."""
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 
 from ..agent.skills import suggest_lineup
-from ..data import get_players, get_world_cup_snapshot
+from ..data import apply_live_player_totals, get_players, get_world_cup_snapshot
+from ..live_stats import get_live_player_totals
 from ..models import Formation
 from ..db import get_db_connection
 from ..tournament_data import get_tournament_overview
@@ -15,7 +18,7 @@ router = APIRouter(prefix="/api/worldcup", tags=["worldcup"])
 
 @router.get("/snapshot")
 async def world_cup_snapshot(topic: str = ""):
-    """Return the dated FIFA roster and semifinal fixture snapshot."""
+    """Return the dated FIFA 48-team roster snapshot and fixture scope."""
     return get_world_cup_snapshot(topic)
 
 
@@ -37,19 +40,31 @@ async def matchday_brief(
     match_id: Optional[str] = None,
     user_id: int = Depends(get_current_user_id),
 ):
-    """Build a dated, source-aware pre-match briefing from the local snapshot.
-
-    This is intentionally deterministic: the fixture, lineup IDs, budget and
-    provenance are server-owned. Gemini can discuss the brief after access is
-    unlocked, but the dashboard never presents an unverified starting XI as a
-    fact.
-    """
-    snapshot = get_world_cup_snapshot()
-    matches = snapshot["matches"]
+    """Build a current source-aware briefing from the live fixture feed."""
+    live_stats = await get_live_player_totals()
+    apply_live_player_totals(live_stats)
+    overview = await get_tournament_overview(force_refresh=True)
+    matches = overview["matches"]
     match = next((item for item in matches if item["id"] == match_id), None) if match_id else None
-    match = match or next((item for item in matches if item.get("status") == "fixture"), None)
+    now = datetime.now(timezone.utc)
+
+    def kickoff(match_item):
+        try:
+            parsed = datetime.fromisoformat(match_item.get("kickoffLocal", "").replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return now
+
     if not match:
-        raise HTTPException(status_code=404, detail="No fixture is available in the current World Cup snapshot")
+        match = next((item for item in matches if item.get("status") == "live"), None)
+    if not match:
+        scheduled = sorted((item for item in matches if item.get("status") == "scheduled"), key=lambda item: abs((kickoff(item) - now).total_seconds()))
+        match = scheduled[0] if scheduled else None
+    if not match:
+        completed = sorted((item for item in matches if item.get("status") == "final"), key=kickoff, reverse=True)
+        match = completed[0] if completed else None
+    if not match:
+        raise HTTPException(status_code=404, detail="No fixture is available in the current live World Cup feed")
 
     conn = get_db_connection()
     row = conn.execute("SELECT budget FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -80,7 +95,7 @@ async def matchday_brief(
 
     return {
         "success": True,
-        "briefType": "gaffer_matchday_brief",
+        "briefType": "wcai_matchday_brief",
         "match": match,
         "lineup": {
             "formation": formation,
@@ -94,14 +109,14 @@ async def matchday_brief(
         "viceCaptain": vice_captain.model_dump(),
         "watchouts": [
             "Verify the official starting XI and late injury news before kickoff.",
-            "Verified tournament goals/assists are used where FIFA exposes them; model xG is an application estimate.",
+            "Goal and assist totals refresh from live match events; the FIFA player-statistics page remains linked as the official reference.",
             f"The proposal uses {proposal['budget_used']:g}M of the server-side {max_budget:g}M budget.",
         ],
         "availabilitySignals": unavailable_status,
         "dataConfidence": "medium",
-        "snapshotDate": snapshot["snapshotDate"],
-        "dataQuality": snapshot["dataQuality"],
-        "sourceUrls": [*snapshot["sourceUrls"], *snapshot["matchSourceUrls"]],
+        "snapshotDate": overview["updatedAt"],
+        "dataQuality": "Current fixture feed plus live goal/assist event aggregation and source-labelled FIFA squad data.",
+        "sourceUrls": [overview["sources"]["liveSchedule"], live_stats["source_url"], live_stats["fifa_source_url"]],
         "scenarios": [
             {"id": "chase", "label": "Chase the game", "formation": "4-3-3", "instruction": "Keep two wide outlets and prioritize verified attacking contribution."},
             {"id": "control", "label": "Control a lead", "formation": "3-5-2", "instruction": "Add a midfield connection and protect central progression."},

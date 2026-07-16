@@ -1,1 +1,1 @@
-"""Regression tests for the Auto-Gaffer API."""
+"""Regression tests for the WCAI API."""

@@ -1,5 +1,5 @@
 """
-Gemini LLM client with function-calling support for the Auto-Gaffer agent.
+Gemini LLM client with function-calling support for the WCAI agent.
 Includes fallback to rule-based logic when no API key is configured.
 """
 import json
@@ -17,7 +17,7 @@ from .prompts import SYSTEM_PROMPT
 
 
 class GeminiAgentClient:
-    """Gemini LLM client with tool-calling for the Auto-Gaffer agent."""
+    """Gemini LLM client with tool-calling for the WCAI agent."""
 
     def __init__(self):
         self.client = None
@@ -101,7 +101,7 @@ class GeminiAgentClient:
             return skills.validate_budget(squad_player_ids, max_budget)
 
         def get_current_world_cup_data(topic: str = "") -> dict:
-            """Return the dated FIFA World Cup 2026 roster and semifinal fixture snapshot.
+            """Return the dated FIFA World Cup 2026 full-squad and fixture snapshot.
 
             Args:
                 topic: Optional team, player, match, date or venue keyword to filter fixtures.
@@ -300,11 +300,11 @@ class GeminiAgentClient:
         except Exception as e:
             print(f"Gemini API error: {e}")
             err_str = str(e)
-            warning = "⚠️ Not: Gemini API bağlantı hatası nedeniyle geçici olarak statik moda geçildi."
+            warning = "⚠️ Gemini API connection failed. WCAI has temporarily switched to rule-based mode."
             if "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower() or "429" in err_str:
-                warning = "⚠️ Not: Gemini API Kota Sınırına Ulaşıldı (429 Resource Exhausted). Lütfen Google AI Studio API anahtarınızın limitlerini kontrol edin veya bir süre bekleyin."
+                warning = "⚠️ Gemini API quota limit reached (429 Resource Exhausted). Check the Google AI Studio key limits and try again shortly."
             elif "API_KEY_INVALID" in err_str or "api key" in err_str.lower():
-                warning = "⚠️ Not: Geçersiz GEMINI_API_KEY. Lütfen backend/.env dosyasındaki API anahtarını kontrol edin."
+                warning = "⚠️ Invalid GEMINI_API_KEY. Check the API key in backend/.env."
 
             fallback_res = self._rule_based_fallback(
                 prompt,
@@ -340,16 +340,15 @@ class GeminiAgentClient:
             if action.totalPoints is not None else 'catalog ranking'
         )
         return (
-            f"⚽ **{action.formation} World Cup 2026 kadro önerisi**\n\n"
+            f"⚽ **{action.formation} World Cup 2026 lineup proposal**\n\n"
             f"**GK:** {', '.join(grouped['GK'])}\n"
             f"**DF:** {', '.join(grouped['DF'])}\n"
             f"**MF:** {', '.join(grouped['MF'])}\n"
             f"**FW:** {', '.join(grouped['FW'])}\n\n"
-            f"**Bütçe:** {budget} · **Skor:** {points}\n"
+            f"**Budget:** {budget} · **Score:** {points}\n"
             f"{action.reasoning}\n\n"
-            "Bu kadro resmi ilk 11 değil; mevcut FIFA World Cup 2026 snapshotı "
-            "ve uygulama fantasy skorlarıyla oluşturulmuş bütçe geçerli bir öneridir. "
-            "Kadroyu sahaya yerleştireyim mi?"
+            "This is not an official starting XI. It is a budget-valid proposal based on the current FIFA World Cup 2026 snapshot "
+            "and WCAI fantasy signals. Would you like me to place it on the pitch?"
         )
 
     def _extract_transfer_action(
@@ -545,7 +544,7 @@ class GeminiAgentClient:
         if prompt_lower.startswith(('hi', 'hello', 'hey', 'sup', 'yo')):
             return AgentResponse(
                 message=(
-                    "Hey gaffer! I'm your Auto-Gaffer AI assistant (running in rule-based mode). "
+                    "Hey manager! I'm WCAI (running in rule-based mode). "
                     "I can help you build your World Cup 2026 squad with tactical analysis, transfer "
                     "advice, and player comparisons. For premium features, please configure GEMINI_API_KEY."
                 ),
@@ -561,11 +560,11 @@ class GeminiAgentClient:
                 buy = catalog.get(action.buyPlayerId or '')
                 return AgentResponse(
                     message=(
-                        f"🔁 **Tekli değişim önerisi**\n\n"
-                        f"{sell.name if sell else 'Seçilen oyuncu'} → {buy.name if buy else 'önerilen oyuncu'}\n\n"
+                        f"🔁 **Single-player change proposal**\n\n"
+                        f"{sell.name if sell else 'Selected player'} → {buy.name if buy else 'recommended player'}\n\n"
                         f"{action.reasoning}\n\n"
-                        "Bu yalnızca tek bir oyuncu için öneridir; diğer 10 oyuncuya dokunmaz. "
-                        "Onaylarsan sadece bu değişimi uygularım."
+                        "This proposal changes one player only; it leaves the other 10 players untouched. "
+                        "If you confirm, WCAI will apply this change only."
                     ),
                     suggestedAction=action,
                     isPremium=is_premium,
@@ -702,9 +701,7 @@ class GeminiAgentClient:
         if not any(term in prompt_lower for term in scope_terms):
             return AgentResponse(
                 message=(
-                    "Bu konuda yardımcı olamam, gaffer. Auto-Gaffer yalnızca "
-                    "FIFA World Cup 2026, futbol maçları, oyuncular ve kadro "
-                    "yönetimi hakkında yanıt verir."
+                    "I cannot help with that. WCAI only covers FIFA World Cup 2026, football matches, players and squad management."
                 ),
                 isPremium=is_premium,
             )
@@ -722,12 +719,8 @@ class GeminiAgentClient:
     def _build_match_discussion(prompt: str) -> Optional[str]:
         """Offer a useful non-mutating answer for match/winner/player questions."""
         normalized = skills._normalize(prompt)
-        aliases = {
-            'argentina': 'Argentina', 'arjantin': 'Argentina',
-            'england': 'England', 'ingiltere': 'England',
-            'france': 'France', 'fransa': 'France',
-            'spain': 'Spain', 'ispanya': 'Spain',
-        }
+        from ..data import get_team_aliases
+        aliases = get_team_aliases()
         mentioned = []
         for alias, team in aliases.items():
             if alias in normalized and team not in mentioned:
@@ -758,13 +751,12 @@ class GeminiAgentClient:
                 verified = f"{stats.goals or 0}G/{stats.assists or 0}A verified" if stats and stats.data_status == 'verified' else f"{player.points} fantasy pts"
                 options.append(f"{player.name} ({team}, {verified})")
         return (
-            f"⚽ **{teams[0]} vs {teams[1]} — konuşma bazlı ön analiz**\n\n"
-            f"Auto-Gaffer modelinde küçük avantaj **{leader}** tarafında: ilk beş oyuncunun uygulama fantasy puanı ortalaması "
-            f"{averages[leader]:.1f}. Bu bir maç sonucu veya resmi olasılık değildir; güncel resmi ilk 11, sakatlık ve canlı oran olmadan kesin kazanan söylemem.\n\n"
-            f"**Kadroya bakılabilecek isimler:**\n- " + "\n- ".join(options[:4]) +
-            "\n\nİstersen bir sonraki mesajda sadece şu üç konudan birini derinleştirebilirim: "
-            "maç eşleşmesi, iki takımın belirli bir bölgesi veya mevcut kadrona tekli oyuncu önerisi. "
-            "Açıkça ‘11 kur’ ya da ‘X yerine Y koy’ demedikçe kadro aksiyonu oluşturmam."
+            f"⚽ **{teams[0]} vs {teams[1]} — conversational preview**\n\n"
+            f"WCAI gives a narrow model edge to **{leader}**: its top-five players average "
+            f"{averages[leader]:.1f} in the application fantasy signal. This is not a match result or an official probability; without confirmed lineups, late injury news and live odds, WCAI will not call a certain winner.\n\n"
+            f"**Players to consider:**\n- " + "\n- ".join(options[:4]) +
+            "\n\nI can next deepen one topic only: the match-up, one area of the pitch, or a single-player recommendation for your squad. "
+            "WCAI will not create a squad action unless you explicitly ask to build an XI or replace a named player."
         )
 
 

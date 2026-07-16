@@ -24,7 +24,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: "Auto-Gaffer | World Cup Live",
+  title: "WCAI | World Cup Live",
   description:
     "AI-powered autonomous fantasy football manager for the 2026 FIFA World Cup. Built on Injective with x402, CCTP, Agent Skills, and MCP.",
 };

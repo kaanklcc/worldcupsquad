@@ -19,7 +19,7 @@ async def chat_with_agent(
     user_id: int = Depends(get_current_user_id)
 ):
     """
-    Chat with Auto-Gaffer. No prompt is sent to Gemini before a server-side
+    Chat with WCAI. No prompt is sent to Gemini before a server-side
     membership or x402 Match Pass has been activated.
     """
     try:

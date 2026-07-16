@@ -51,7 +51,7 @@ def _payment_requirement(mode: str) -> dict:
         raise HTTPException(status_code=503, detail="X402_PAY_TO and X402_ASSET must be configured before production payments are enabled")
     price = MEMBERSHIP_PRICE_USDC if mode == "membership" else SINGLE_ACCESS_PRICE_USDC
     amount_atomic = str(round(price * 1_000_000))
-    description = "Auto-Gaffer Pro membership" if mode == "membership" else "Auto-Gaffer Match Pass"
+    description = "WCAI Pro membership" if mode == "membership" else "WCAI Match Pass"
     return {
         "x402Version": 2,
         "error": "PAYMENT-SIGNATURE is required",
