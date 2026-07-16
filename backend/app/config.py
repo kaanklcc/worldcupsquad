@@ -34,10 +34,16 @@ class Settings(BaseSettings):
     # for offline demos or when a judge only runs the FastAPI process.
     mcp_simulation: bool = False
 
-    # CCTP
-    cctp_source_domain: int = 0  # Ethereum
-    cctp_destination_domain: int = 3  # Injective
-    cctp_source_token: str = "0x07865c6e87b9f70255377e024ace6630c1eaa37f"  # USDC on Ethereum
+    # CCTP v2 testnet: browser wallets sign each transaction; this service only
+    # verifies confirmed receipts before granting a fantasy-budget credit.
+    cctp_source_domain: int = 0  # Ethereum / Sepolia
+    cctp_destination_domain: int = 29  # Injective EVM testnet
+    cctp_source_token: str = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"  # Circle USDC on Sepolia
+    cctp_destination_token: str = "0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d"  # Circle USDC on Injective testnet
+    cctp_token_messenger: str = "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA"
+    cctp_message_transmitter: str = "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275"
+    cctp_sepolia_rpc_url: str = "https://ethereum-sepolia-rpc.publicnode.com"
+    cctp_injective_rpc_url: str = "https://k8s.testnet.json-rpc.injective.network/"
     circle_api_key: str = ""
 
     # Public World Cup event refresh. Tests can disable this to stay fully

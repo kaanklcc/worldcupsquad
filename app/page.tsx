@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt, LineupApplyReceipt, AccessStatus, AccessUnlockResponse, MatchdayBriefResponse, TacticalLabResponse } from '@/types';
+import type { Player, SquadSlot, ChatMessage, SuggestedAction, TransferReceipt, LineupApplyReceipt, AccessStatus, AccessUnlockResponse, CCTPReceipt, MatchdayBriefResponse, TacticalLabResponse } from '@/types';
 import Header from '@/components/Header';
 import Pitch from '@/components/Pitch';
 import ChatPanel from '@/components/ChatPanel';
@@ -12,7 +12,9 @@ import AuthOverlay from '@/components/AuthOverlay';
 import AccessModal from '@/components/AccessModal';
 import TacticalLabPanel from '@/components/TacticalLabPanel';
 import PlayerIntelModal from '@/components/PlayerIntelModal';
+import CctpBridgeModal from '@/components/CctpBridgeModal';
 import { apiFetch } from '@/lib/api';
+import { payWithX402 } from '@/lib/x402';
 
 type SelectedSlot = SquadSlot & { isBench: boolean };
 
@@ -75,8 +77,8 @@ export default function HomePage() {
   const [squad, setSquad] = useState<SquadSlot[]>(createInitialSquad);
   const [bench, setBench] = useState<SquadSlot[]>(createInitialBench);
   const [budget, setBudget] = useState(100);
-  const [cctpLoading, setCctpLoading] = useState(false);
   const [cctpUsed, setCctpUsed] = useState(false);
+  const [cctpModalOpen, setCctpModalOpen] = useState(false);
   const [agentLoading, setAgentLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<SuggestedAction | null>(null);
 
@@ -374,8 +376,9 @@ export default function HomePage() {
     setModalOpen(true);
   }, [intelSlot]);
 
-  // CCTP Bridge
-  const handleCCTP = useCallback(async () => {
+  // CCTP backing is browser-signed; the server credits a budget only after
+  // it verifies both the Sepolia burn and Injective mint receipts.
+  const handleCCTP = useCallback(() => {
     if (!accessStatus?.hasFinanceAccess) {
       setAccessError(null);
       setAccessModalOpen(true);
@@ -396,46 +399,22 @@ export default function HomePage() {
       return;
     }
 
-    setCctpLoading(true);
-    try {
-      const data = await apiFetch<{
-        success: boolean;
-        newBudgetBonus: number;
-        txHash: string;
-        message: string;
-        simulated: boolean;
-      }>('/api/cctp', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': createIdempotencyKey('cctp') },
-        body: JSON.stringify({
-          walletAddress: accessStatus.walletAddress,
-          amount: 20,
-          sourceChain: 'Ethereum',
-        }),
-      });
-      if (data.success) {
-        setBudget((prev) => prev + data.newBudgetBonus);
-        setCctpUsed(true);
-        // Add system message to chat
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-${Date.now()}`,
-            role: 'assistant',
-            content: `⛓️ **CCTP Bridge complete**\n\n${data.message}\n\nTx Hash: \`${data.txHash}\`\n\nYour squad budget is now **${budget + data.newBudgetBonus}M**.${data.simulated ? '\n\n_Note: this operation is simulated in demo mode._' : ''}`,
-          },
-        ]);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'CCTP bridge failed.';
-      setMessages((prev) => [
-        ...prev,
-        { id: `msg-${Date.now()}-cctp-error`, role: 'assistant', content: `❌ CCTP operation failed: ${message}` },
-      ]);
-    } finally {
-      setCctpLoading(false);
-    }
-  }, [accessStatus, budget]);
+    setCctpModalOpen(true);
+  }, [accessStatus]);
+
+  const handleCctpComplete = useCallback((receipt: CCTPReceipt) => {
+    setBudget((previous) => previous + receipt.newBudgetBonus);
+    setCctpUsed(true);
+    setCctpModalOpen(false);
+    setMessages((previous) => [
+      ...previous,
+      {
+        id: `msg-${Date.now()}-cctp-confirmed`,
+        role: 'assistant',
+        content: `**CCTP backing confirmed**\n\n${receipt.message}\n\nSepolia burn: \`${receipt.burnTxHash ?? 'verified'}\`\nInjective mint: \`${receipt.mintTxHash ?? receipt.txHash}\`\n\nYour WCAI squad budget increased by **${receipt.newBudgetBonus}M** after on-chain receipt verification.`,
+      },
+    ]);
+  }, []);
 
   // Send chat message
   const handleAgentChat = useCallback(
@@ -627,15 +606,15 @@ export default function HomePage() {
     setAccessLoading(true);
     setAccessError(null);
     try {
-      const data = await apiFetch<AccessUnlockResponse>('/api/access/unlock', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': createIdempotencyKey(`access-${mode}`) },
-        body: JSON.stringify({
+      const data = await payWithX402<AccessUnlockResponse>(
+        '/api/access/unlock',
+        {
           mode,
           hasPaidX402: !accessStatus?.isDemoAccount,
           walletAddress: walletAddress || undefined,
-        }),
-      });
+        },
+        createIdempotencyKey(`access-${mode}`),
+      );
       setAccessStatus(data);
       setMessages((previous) => [
         ...previous,
@@ -646,7 +625,7 @@ export default function HomePage() {
             `✅ **Access activated**\n\n${data.message}\n` +
             `Plan: **${data.membershipActive ? data.membershipTier : 'x402 Match Pass'}**\n` +
             `Receipt: \`${data.receipt}\`` +
-            `${data.simulated ? '\n\n_Note: this is a hackathon demo operation; no real funds were charged._' : ''}`,
+            `${data.simulated ? '\n\n_Note: this is the Kaan judge-demo membership; no real funds were charged._' : '\n\nOn-chain x402 settlement was verified before access changed.'}`,
           isPremium: true,
         },
       ]);
@@ -908,7 +887,7 @@ export default function HomePage() {
         budget={budget} 
         maxBudget={120}
         onAcquireBacking={handleCCTP} 
-        cctpLoading={cctpLoading} 
+        cctpLoading={cctpModalOpen} 
         cctpUsed={cctpUsed}
         accessStatus={accessStatus}
         onAccessClick={() => {
@@ -1014,6 +993,13 @@ export default function HomePage() {
         }}
         onReplace={handleReplaceFromIntel}
         onUnlockPremium={handleUnlockPremium}
+      />
+
+      <CctpBridgeModal
+        isOpen={cctpModalOpen}
+        savedWallet={accessStatus?.walletAddress}
+        onClose={() => setCctpModalOpen(false)}
+        onComplete={handleCctpComplete}
       />
 
       {accessModalOpen && (

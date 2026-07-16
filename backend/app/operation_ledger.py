@@ -159,3 +159,17 @@ def recent_operations(user_id: int, limit: int = 30) -> list[dict[str, Any]]:
         return [serialize_operation(row) for row in cursor.fetchall()]
     finally:
         conn.close()
+
+
+def get_operation(operation_id: str, user_id: int) -> dict[str, Any]:
+    """Load one operation only when it belongs to the authenticated manager."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM operation_receipts WHERE operation_id = ?", (operation_id,))
+        row = cursor.fetchone()
+        if not row or row["user_id"] != user_id:
+            raise HTTPException(status_code=404, detail="Operation was not found for this manager")
+        return serialize_operation(row)
+    finally:
+        conn.close()

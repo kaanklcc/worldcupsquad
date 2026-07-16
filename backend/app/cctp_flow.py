@@ -1,143 +1,160 @@
+"""Verification helpers for a wallet-signed Circle CCTP v2 testnet flow.
+
+The browser performs approve, burn and mint with the manager's own wallet.
+This backend never accepts a private key and never creates a synthetic bridge
+receipt. It only supplies public CCTP configuration, proxies Iris attestation
+status, and verifies both confirmed chain transactions before budget changes.
 """
-CCTP (Circle Cross-Chain Transfer Protocol) flow.
-Handles burn, attestation, and mint operations for USDC bridging.
-"""
+from __future__ import annotations
+
+from typing import Any
+
 import httpx
-from typing import Optional, Dict, Any
-import hashlib
-import time
+from fastapi import HTTPException
 
 from .config import settings
 
 
-class CCTPFlow:
-    """Handles CCTP burn → attest → mint flow for USDC bridging."""
-
-    def __init__(self):
-        self.source_domain = settings.cctp_source_domain
-        self.destination_domain = settings.cctp_destination_domain
-        self.source_token = settings.cctp_source_token
-        self.circle_api_key = settings.circle_api_key
-
-    def _generate_mock_tx_hash(self, operation: str, details: str) -> str:
-        """Generate a realistic-looking mock transaction hash for simulation."""
-        data = f"{operation}:{details}:{time.time()}".encode()
-        hash_bytes = hashlib.sha256(data).digest()
-        return f"0x{hash_bytes[:20].hex()}...{hash_bytes[-4:].hex()}"
-
-    async def simulate_bridge(
-        self,
-        wallet_address: str,
-        amount: int,
-        source_chain: str
-    ) -> Dict[str, Any]:
-        """
-        Simulate a CCTP bridge operation (used when no real credentials are configured).
-
-        Returns a realistic simulation response without actual on-chain interaction.
-
-        Args:
-            wallet_address: Source wallet address
-            amount: Amount to bridge in USDC
-            source_chain: Source blockchain name
-
-        Returns:
-            dict with success status, tx hash, and details
-        """
-        burn_tx_hash = self._generate_mock_tx_hash("burn", f"{wallet_address}:{amount}")
-        attestation = self._generate_mock_tx_hash("attest", burn_tx_hash)
-        mint_tx_hash = self._generate_mock_tx_hash("mint", attestation)
-
-        return {
-            "success": True,
-            "simulated": True,
-            "burn_tx_hash": burn_tx_hash,
-            "attestation": attestation,
-            "mint_tx_hash": mint_tx_hash,
-            "final_tx_hash": f"inj1_cctp_{mint_tx_hash[2:12]}...{mint_tx_hash[-6:]}",
-            "amount_bridged": amount,
-            "source_chain": source_chain,
-            "destination_chain": "Injective",
-            "message": f"CCTP bridge simulation successful. {amount} USDC bridged from {source_chain} to Injective."
-        }
-
-    async def real_bridge(
-        self,
-        wallet_address: str,
-        amount: int,
-        source_chain: str
-    ) -> Dict[str, Any]:
-        """
-        Perform a real CCTP bridge operation.
-
-        This involves:
-        1. Burning USDC on source domain via TokenMessenger contract
-        2. Fetching attestation from Circle's Attestation API
-        3. Minting USDC on destination domain via TokenMessenger contract
-
-        NOTE: This requires wallet signing and contract interaction. For now,
-        this returns a realistic simulation as we don't have wallet credentials.
-
-        Args:
-            wallet_address: Source wallet address
-            amount: Amount to bridge in USDC
-            source_chain: Source blockchain name
-
-        Returns:
-            dict with success status, tx hash, and details
-        """
-        # In a production environment, this would:
-        # 1. Call TokenMessenger.burn() on source chain
-        # 2. Fetch attestation from Circle's API
-        # 3. Call TokenMessenger.mint() on destination chain
-
-        # For this implementation, return realistic simulation
-        return await self.simulate_bridge(wallet_address, amount, source_chain)
-
-    async def fetch_attestation(self, message_bytes: str) -> Optional[str]:
-        """
-        Fetch attestation from Circle's API for a burn message.
-
-        Args:
-            message_bytes: The message bytes from the burn transaction
-
-        Returns:
-            Attestation signature or None if failed
-        """
-        if not self.circle_api_key:
-            print("Warning: CIRCLE_API_KEY not configured. Cannot fetch real attestations.")
-            return None
-
-        circle_attestation_url = "https://iris-api-sandbox.circle.com/attestations"
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    circle_attestation_url,
-                    json={
-                        "message": message_bytes,
-                        "attestationType": "Attestation"
-                    },
-                    headers={
-                        "Authorization": f"Bearer {self.circle_api_key}"
-                    },
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data.get("attestation")
-        except httpx.HTTPError as e:
-            print(f"Failed to fetch attestation: {e}")
-            return None
+IRIS_SANDBOX_URL = "https://iris-api-sandbox.circle.com"
+BURN_SELECTOR = "0x8e0250ee"  # depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)
+MINT_SELECTOR = "0x57ecfd28"  # receiveMessage(bytes,bytes)
 
 
-# Singleton instance
-_cctp_flow: Optional[CCTPFlow] = None
+def _address(value: str) -> str:
+    return value.lower()
 
 
-def get_cctp_flow() -> CCTPFlow:
-    """Get or create the singleton CCTP flow handler."""
-    global _cctp_flow
-    if _cctp_flow is None:
-        _cctp_flow = CCTPFlow()
-    return _cctp_flow
+def cctp_public_config() -> dict[str, Any]:
+    """Return public constants required by an EVM wallet; no secrets included."""
+    return {
+        "source": {
+            "chainId": 11155111,
+            "chainName": "Ethereum Sepolia",
+            "rpcUrl": settings.cctp_sepolia_rpc_url,
+            "usdc": settings.cctp_source_token,
+            "domain": settings.cctp_source_domain,
+        },
+        "destination": {
+            "chainId": 1439,
+            "chainName": "Injective EVM Testnet",
+            "rpcUrl": settings.cctp_injective_rpc_url,
+            "usdc": settings.cctp_destination_token,
+            "domain": settings.cctp_destination_domain,
+        },
+        "tokenMessenger": settings.cctp_token_messenger,
+        "messageTransmitter": settings.cctp_message_transmitter,
+        "irisBaseUrl": IRIS_SANDBOX_URL,
+        "explorers": {
+            "source": "https://sepolia.etherscan.io/tx/",
+            "destination": "https://testnet.blockscout.injective.network/tx/",
+        },
+    }
+
+
+async def get_attestation(burn_tx_hash: str) -> dict[str, Any]:
+    """Read Circle Iris status. The caller polls until `status == complete`."""
+    url = f"{IRIS_SANDBOX_URL}/v2/messages/{settings.cctp_source_domain}?transactionHash={burn_tx_hash}"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url)
+            if response.status_code == 404:
+                return {"status": "pending", "message": "Burn is not indexed by Iris yet."}
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPError as error:
+        raise HTTPException(status_code=502, detail=f"Circle Iris attestation request failed: {error}") from error
+
+    messages = data.get("messages") or []
+    message = messages[0] if messages else {}
+    status = str(message.get("status") or "pending").lower()
+    complete = status == "complete" and bool(message.get("message")) and bool(message.get("attestation"))
+    return {
+        "status": "complete" if complete else status,
+        "message": message.get("message") if complete else None,
+        "attestation": message.get("attestation") if complete else None,
+        "burnTxHash": burn_tx_hash,
+    }
+
+
+async def _rpc(url: str, method: str, params: list[Any]) -> Any:
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            body = response.json()
+    except httpx.HTTPError as error:
+        raise HTTPException(status_code=502, detail=f"CCTP chain verification failed: {error}") from error
+    if body.get("error"):
+        raise HTTPException(status_code=502, detail=f"CCTP chain verification failed: {body['error'].get('message', 'RPC error')}")
+    return body.get("result")
+
+
+def _decode_word(input_data: str, index: int) -> int:
+    # ABI words begin after the four-byte selector. index 0 is the first arg.
+    start = 10 + (index * 64)
+    word = input_data[start:start + 64]
+    if len(word) != 64:
+        raise HTTPException(status_code=422, detail="CCTP burn calldata is incomplete")
+    return int(word, 16)
+
+
+def _decode_address_word(input_data: str, index: int) -> str:
+    start = 10 + (index * 64)
+    word = input_data[start:start + 64]
+    if len(word) != 64:
+        raise HTTPException(status_code=422, detail="CCTP burn calldata is incomplete")
+    return f"0x{word[-40:]}".lower()
+
+
+async def _confirmed_transaction(rpc_url: str, tx_hash: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    tx, receipt = await _rpc(rpc_url, "eth_getTransactionByHash", [tx_hash]), await _rpc(rpc_url, "eth_getTransactionReceipt", [tx_hash])
+    if not tx or not receipt:
+        raise HTTPException(status_code=422, detail="CCTP transaction is not confirmed on the selected chain")
+    if str(receipt.get("status", "")).lower() != "0x1":
+        raise HTTPException(status_code=422, detail="CCTP transaction reverted on-chain")
+    return tx, receipt
+
+
+async def verify_cctp_receipts(*, wallet_address: str, amount_usdc: int, burn_tx_hash: str, mint_tx_hash: str) -> dict[str, Any]:
+    """Verify source burn and destination mint before any database credit.
+
+    This intentionally checks receipt success, sender, destination contracts,
+    function selectors, declared USDC amount and Injective destination domain.
+    It is conservative: an unavailable RPC or incomplete transaction fails
+    closed and does not alter the manager's budget.
+    """
+    burn_tx, _ = await _confirmed_transaction(settings.cctp_sepolia_rpc_url, burn_tx_hash)
+    mint_tx, _ = await _confirmed_transaction(settings.cctp_injective_rpc_url, mint_tx_hash)
+    expected_wallet = _address(wallet_address)
+
+    if _address(str(burn_tx.get("from", ""))) != expected_wallet:
+        raise HTTPException(status_code=422, detail="CCTP burn transaction was not sent by the saved wallet")
+    if _address(str(burn_tx.get("to", ""))) != _address(settings.cctp_token_messenger):
+        raise HTTPException(status_code=422, detail="CCTP burn transaction targets an unexpected contract")
+    burn_input = str(burn_tx.get("input") or "")
+    if not burn_input.startswith(BURN_SELECTOR):
+        raise HTTPException(status_code=422, detail="CCTP burn transaction does not call depositForBurn")
+    if _decode_word(burn_input, 0) < amount_usdc * 1_000_000:
+        raise HTTPException(status_code=422, detail="CCTP burn amount is below the requested USDC amount")
+    if _decode_word(burn_input, 1) != settings.cctp_destination_domain:
+        raise HTTPException(status_code=422, detail="CCTP burn uses an unexpected destination domain")
+    if _decode_address_word(burn_input, 2) != expected_wallet:
+        raise HTTPException(status_code=422, detail="CCTP burn recipient does not match the saved wallet")
+    if _decode_address_word(burn_input, 3) != _address(settings.cctp_source_token):
+        raise HTTPException(status_code=422, detail="CCTP burn uses an unexpected USDC contract")
+
+    if _address(str(mint_tx.get("from", ""))) != expected_wallet:
+        raise HTTPException(status_code=422, detail="CCTP mint transaction was not sent by the saved wallet")
+    if _address(str(mint_tx.get("to", ""))) != _address(settings.cctp_message_transmitter):
+        raise HTTPException(status_code=422, detail="CCTP mint transaction targets an unexpected contract")
+    if not str(mint_tx.get("input") or "").startswith(MINT_SELECTOR):
+        raise HTTPException(status_code=422, detail="CCTP mint transaction does not call receiveMessage")
+
+    return {
+        "burnTxHash": burn_tx_hash,
+        "mintTxHash": mint_tx_hash,
+        "sourceNetwork": "eip155:11155111",
+        "destinationNetwork": "eip155:1439",
+        "simulated": False,
+    }

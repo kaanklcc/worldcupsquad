@@ -123,6 +123,7 @@ export interface AccessStatus {
   accessSource?: string | null;
   walletAddress?: string | null;
   paymentMode: 'demo' | 'verified_x402';
+  x402Ready?: boolean;
   x402Network: string;
   pricing: {
     membershipUsdc: number;
@@ -168,6 +169,8 @@ export interface CCTPReceipt {
   success: boolean;
   newBudgetBonus: number;
   txHash: string;
+  burnTxHash?: string;
+  mintTxHash?: string;
   message: string;
   simulated: boolean;
   operation?: OperationReceipt;

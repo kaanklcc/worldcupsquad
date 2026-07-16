@@ -105,10 +105,22 @@ class ChatMessage(BaseModel):
     actionApplied: Optional[bool] = False
 
 
-class CCTPRequest(BaseModel):
+class CCTPIntentRequest(BaseModel):
     walletAddress: str
     amount: int = 20
     sourceChain: str = 'Ethereum'
+
+
+class CCTPAttestationRequest(BaseModel):
+    burnTxHash: str = Field(..., pattern=r"^0x[a-fA-F0-9]{64}$")
+
+
+class CCTPConfirmRequest(BaseModel):
+    operationId: str = Field(..., min_length=8, max_length=100)
+    walletAddress: str
+    amount: int = 20
+    burnTxHash: str = Field(..., pattern=r"^0x[a-fA-F0-9]{64}$")
+    mintTxHash: str = Field(..., pattern=r"^0x[a-fA-F0-9]{64}$")
 
 
 class CCTPResponse(BaseModel):
@@ -116,7 +128,9 @@ class CCTPResponse(BaseModel):
     newBudgetBonus: int
     txHash: str
     message: str
-    simulated: bool = False  # Indicates if this is a realistic simulation
+    burnTxHash: Optional[str] = None
+    mintTxHash: Optional[str] = None
+    simulated: bool = False
     operation: Optional[dict] = None
 
 

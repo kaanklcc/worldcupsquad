@@ -95,6 +95,11 @@ def get_access_status(user_id: int) -> Dict[str, Any]:
     source = row["membership_source"] if membership_active else (
         "x402_access_pass" if access_pass_active else None
     )
+    x402_ready = bool(
+        settings.x402_facilitator_url
+        and settings.x402_pay_to != "0x0000000000000000000000000000000000000000"
+        and settings.x402_asset != "0x0000000000000000000000000000000000000000"
+    )
 
     return {
         "username": row["username"],
@@ -111,7 +116,8 @@ def get_access_status(user_id: int) -> Dict[str, Any]:
         "hasFinanceAccess": membership_active,
         "accessSource": source,
         "walletAddress": row["wallet_address"],
-        "paymentMode": "demo" if settings.x402_demo_mode else "verified_x402",
+        "paymentMode": "verified_x402" if x402_ready else "demo",
+        "x402Ready": x402_ready,
         "x402Network": settings.x402_network,
         "pricing": {
             "membershipUsdc": MEMBERSHIP_PRICE_USDC,

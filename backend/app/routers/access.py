@@ -36,19 +36,10 @@ class WalletUpdateRequest(BaseModel):
     walletAddress: str
 
 
-def _is_local_demo() -> bool:
-    return settings.x402_demo_mode and settings.x402_facilitator_url in {
-        "",
-        "https://facilitator.x402.co/verify",
-    }
-
-
 def _payment_requirement(mode: str) -> dict:
     zero_address = "0x0000000000000000000000000000000000000000"
-    if not settings.x402_demo_mode and (
-        settings.x402_pay_to == zero_address or settings.x402_asset == zero_address
-    ):
-        raise HTTPException(status_code=503, detail="X402_PAY_TO and X402_ASSET must be configured before production payments are enabled")
+    if not settings.x402_facilitator_url or settings.x402_pay_to == zero_address or settings.x402_asset == zero_address:
+        raise HTTPException(status_code=503, detail="Configure X402_FACILITATOR_URL, X402_PAY_TO and X402_ASSET before accepting real x402 payments")
     price = MEMBERSHIP_PRICE_USDC if mode == "membership" else SINGLE_ACCESS_PRICE_USDC
     amount_atomic = str(round(price * 1_000_000))
     description = "WCAI Pro membership" if mode == "membership" else "WCAI Match Pass"
@@ -153,42 +144,6 @@ async def unlock_access(
     signature = payment_signature or legacy_payment
     receipt = legacy_receipt
 
-    # Local hackathon demo: the UI deliberately asks the user to start a
-    # simulated x402 purchase.  This branch must be disabled in production.
-    if _is_local_demo() and settings.x402_allow_simulated_purchases and body.hasPaidX402:
-        operation, replay_receipt = begin_unlock_operation()
-        if replay_receipt:
-            return {**replay_receipt, "operation": operation}
-        try:
-            demo_receipt = f"x402_demo_{body.mode}_{user_id}_{int(time.time())}"
-            result = grant_paid_access(
-                user_id,
-                mode=body.mode,
-                source="x402_demo",
-                receipt=demo_receipt,
-                simulated=True,
-                wallet_address=body.walletAddress,
-            )
-            response.headers["PAYMENT-RESPONSE"] = demo_receipt
-            payload = {
-                "success": True,
-                "message": "Simulated x402 access activated; no real USDC was transferred.",
-                **result,
-            }
-            confirmed = confirm_operation(
-                operation["operationId"],
-                receipt=payload,
-                tx_hash=demo_receipt,
-                simulated=True,
-            )
-            return {**payload, "operation": confirmed}
-        except HTTPException as error:
-            fail_operation(operation["operationId"], str(error.detail))
-            raise
-        except Exception as error:
-            fail_operation(operation["operationId"], str(error))
-            raise HTTPException(status_code=500, detail=f"Simulated x402 access activation failed: {error}")
-
     if not signature and not receipt:
         _raise_payment_required(body.mode)
 
@@ -208,6 +163,14 @@ async def unlock_access(
         if not verification.get("verified") or currency != "USDC" or amount < expected:
             _raise_payment_required(body.mode)
 
+        payer = str(verification.get("payer") or "").strip()
+        if not payer:
+            raise HTTPException(status_code=502, detail="x402 facilitator did not return the verified payer address")
+        verified_wallet = validate_wallet(payer)
+        if body.walletAddress and body.walletAddress.lower() != verified_wallet.lower():
+            raise HTTPException(status_code=422, detail="The x402 signer must match the wallet selected for this access grant")
+        save_wallet(user_id, verified_wallet)
+
         verified_receipt = str(verification.get("receipt") or receipt or f"x402_verified_{user_id}_{int(time.time())}")
         result = grant_paid_access(
             user_id,
@@ -215,7 +178,7 @@ async def unlock_access(
             source="x402_verified",
             receipt=verified_receipt,
             simulated=False,
-            wallet_address=body.walletAddress,
+            wallet_address=verified_wallet,
         )
         response.headers["PAYMENT-RESPONSE"] = str(verification.get("paymentResponse") or verified_receipt)
         payload = {"success": True, "message": "x402 payment verified and access activated.", **result}

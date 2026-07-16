@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -29,12 +29,20 @@ class AutoGafferRegressionTests(unittest.TestCase):
         cls._original_settings = {
             "x402_demo_mode": settings.x402_demo_mode,
             "x402_allow_simulated_purchases": settings.x402_allow_simulated_purchases,
+            "x402_facilitator_url": settings.x402_facilitator_url,
+            "x402_pay_to": settings.x402_pay_to,
+            "x402_asset": settings.x402_asset,
+            "cctp_destination_domain": settings.cctp_destination_domain,
             "mcp_simulation": settings.mcp_simulation,
             "live_stats_enabled": settings.live_stats_enabled,
             "live_event_feed_enabled": settings.live_event_feed_enabled,
         }
         settings.x402_demo_mode = True
         settings.x402_allow_simulated_purchases = False
+        settings.x402_facilitator_url = "https://facilitator.test"
+        settings.x402_pay_to = "0x3333333333333333333333333333333333333333"
+        settings.x402_asset = "0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d"
+        settings.cctp_destination_domain = 29
         settings.mcp_simulation = True
         settings.live_stats_enabled = False
         settings.live_event_feed_enabled = False
@@ -157,7 +165,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         other_wallet = "0x2222222222222222222222222222222222222222"
 
         missing_wallet = self.client.post(
-            "/api/cctp",
+            "/api/cctp/intent",
             headers=self.auth(token),
             json={"walletAddress": wallet, "amount": 20},
         )
@@ -171,23 +179,40 @@ class AutoGafferRegressionTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 200, saved.text)
 
         mismatch = self.client.post(
-            "/api/cctp",
+            "/api/cctp/intent",
             headers=self.auth(token),
             json={"walletAddress": other_wallet, "amount": 20},
         )
         self.assertEqual(mismatch.status_code, 400, mismatch.text)
 
-        bridged = self.client.post(
-            "/api/cctp",
-            headers=self.auth(token),
+        intent = self.client.post(
+            "/api/cctp/intent",
+            headers={**self.auth(token), "Idempotency-Key": "real-cctp-intent"},
             json={"walletAddress": wallet, "amount": 20},
         )
+        self.assertEqual(intent.status_code, 200, intent.text)
+        operation_id = intent.json()["operation"]["operationId"]
+        self.assertEqual(intent.json()["config"]["destination"]["domain"], 29)
+
+        with patch("app.routers.cctp.verify_cctp_receipts", new_callable=AsyncMock) as verify:
+            verify.return_value = {"burnTxHash": "0x" + "a" * 64, "mintTxHash": "0x" + "b" * 64, "simulated": False}
+            bridged = self.client.post(
+                "/api/cctp/confirm",
+                headers=self.auth(token),
+                json={
+                    "operationId": operation_id,
+                    "walletAddress": wallet,
+                    "amount": 20,
+                    "burnTxHash": "0x" + "a" * 64,
+                    "mintTxHash": "0x" + "b" * 64,
+                },
+            )
         self.assertEqual(bridged.status_code, 200, bridged.text)
-        self.assertTrue(bridged.json()["simulated"])
+        self.assertFalse(bridged.json()["simulated"])
 
         repeated = self.client.post(
-            "/api/cctp",
-            headers=self.auth(token),
+            "/api/cctp/intent",
+            headers={**self.auth(token), "Idempotency-Key": "new-cctp-intent"},
             json={"walletAddress": wallet, "amount": 20},
         )
         self.assertEqual(repeated.status_code, 409, repeated.text)
