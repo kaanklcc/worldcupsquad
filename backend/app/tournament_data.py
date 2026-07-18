@@ -29,6 +29,34 @@ STAGE_LABELS = {
 }
 STAGE_ORDER = {stage: index for index, stage in enumerate(STAGE_LABELS)}
 
+# Map the live event feed's slug variants onto the app's canonical stage keys
+# so the bracket, fixtures and stage order all share one stable vocabulary.
+STAGE_KEY_ALIASES = {
+    "group-stage": "group",
+    "group": "group",
+    "round-of-32": "r32",
+    "r32": "r32",
+    "round-of-16": "r16",
+    "r16": "r16",
+    "quarterfinals": "qf",
+    "quarter-final": "qf",
+    "qf": "qf",
+    "semifinals": "sf",
+    "semi-final": "sf",
+    "sf": "sf",
+    "3rd-place-match": "third",
+    "third-place-match": "third",
+    "third-place-play-off": "third",
+    "third": "third",
+    "final": "final",
+}
+
+
+def _resolve_stage_key(raw: Any) -> str:
+    """Normalize any provider stage slug into the app's canonical stage key."""
+    candidate = str(raw or "").strip().lower()
+    return STAGE_KEY_ALIASES.get(candidate, candidate)
+
 
 def _list(payload: Any, key: str) -> list[dict[str, Any]]:
     if isinstance(payload, dict):
@@ -78,14 +106,15 @@ def _normalize_espn(payload: dict[str, Any]) -> dict[str, Any]:
                 }
         status = competition.get("status", {}).get("type", {})
         state = status.get("state", "pre")
-        stage_key = event.get("season", {}).get("slug", "group")
+        raw_stage_key = event.get("season", {}).get("slug", "group")
+        stage_key = _resolve_stage_key(raw_stage_key)
         venue = competition.get("venue", {})
         matches.append({
             "id": f"espn_{event.get('id')}",
             "matchNumber": index,
             "stageKey": stage_key,
-            "stage": competition.get("altGameNote") or stage_key.replace("-", " ").title(),
-            "group": stage_key.replace("-", " ").title(),
+            "stage": STAGE_LABELS.get(stage_key) or competition.get("altGameNote") or raw_stage_key.replace("-", " ").title(),
+            "group": STAGE_LABELS.get(stage_key, stage_key),
             "homeTeam": home_team.get("displayName", "TBD"),
             "awayTeam": away_team.get("displayName", "TBD"),
             "homeCode": home_team.get("abbreviation", "TBD"),

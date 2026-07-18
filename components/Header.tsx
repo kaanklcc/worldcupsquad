@@ -11,6 +11,7 @@ interface HeaderProps {
   cctpUsed: boolean;
   accessStatus: AccessStatus | null;
   onAccessClick: () => void;
+  onLogout: () => void;
 }
 
 export default function Header({
@@ -21,6 +22,7 @@ export default function Header({
   cctpUsed,
   accessStatus,
   onAccessClick,
+  onLogout,
 }: HeaderProps) {
   const wallet = accessStatus?.walletAddress;
   const walletLabel = wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : 'Connect wallet';
@@ -94,9 +96,13 @@ export default function Header({
           <span className="material-symbols-outlined hover:text-primary transition-colors cursor-pointer text-xl">
             notifications_active
           </span>
-          <div className="w-8 h-8 rounded-full border border-outline-variant bg-surface-container-high flex items-center justify-center">
-             <span className="material-symbols-outlined text-on-surface-variant text-base">person</span>
-          </div>
+          <button
+            onClick={onLogout}
+            title="Log out"
+            className="w-8 h-8 rounded-full border border-outline-variant bg-surface-container-high flex items-center justify-center transition hover:border-primary hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-on-surface-variant text-base">logout</span>
+          </button>
         </div>
       </div>
     </nav>

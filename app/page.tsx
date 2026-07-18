@@ -883,17 +883,18 @@ export default function HomePage() {
 
   return (
     <div className="flex h-screen flex-col bg-background text-on-background overflow-hidden">
-      <Header 
-        budget={budget} 
+      <Header
+        budget={budget}
         maxBudget={120}
-        onAcquireBacking={handleCCTP} 
-        cctpLoading={cctpModalOpen} 
+        onAcquireBacking={handleCCTP}
+        cctpLoading={cctpModalOpen}
         cctpUsed={cctpUsed}
         accessStatus={accessStatus}
         onAccessClick={() => {
           setAccessError(null);
           setAccessModalOpen(true);
         }}
+        onLogout={handleLogout}
       />
 
       <div className="flex flex-1 overflow-hidden">
