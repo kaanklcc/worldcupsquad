@@ -1,170 +1,396 @@
-# WCAI
+# WCAI — World Cup AI Command Centre
 
-WCAI is a membership-first World Cup 2026 fantasy football command centre built for the Injective Global Cup Hackathon. A fan builds a squad with a USDC-denominated budget, unlocks Gemini and Deep Tactical Analytics through membership or x402, and approves structured lineup/transfer actions through an MCP tool.
+<div align="center">
 
-The product solves a simple fan problem: World Cup fantasy decisions are spread across player stats, tactical context, and funding actions. WCAI brings those decisions into one explainable workflow.
+**Explainable AI squad decisions for World Cup fans, settled and audited with Injective.**
 
-### World Cup data provenance
+[![Injective Global Cup](https://img.shields.io/badge/Injective_Global_Cup-2026-6C5CE7?style=for-the-badge)](https://www.hackquest.io/hackathons/The-Injective-Global-Cup)
+![x402](https://img.shields.io/badge/x402-HTTP_Payments-13C296?style=for-the-badge)
+![CCTP](https://img.shields.io/badge/CCTP-Cross--chain_USDC-16BFFD?style=for-the-badge)
+![MCP](https://img.shields.io/badge/MCP-Verified_Actions-F5B942?style=for-the-badge)
+![Agent Skills](https://img.shields.io/badge/Agent_Skills-Gemini-9B7EDE?style=for-the-badge)
 
-The catalog is generated from FIFA's [official final Squad Lists PDF](https://fdp.fifa.org/assetspublic/ce281/pdf/SquadLists-English.pdf): 48 confirmed squads and 1,248 players, captured in the dated snapshot. FIFA's [tournament teams page](https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/teams) is kept as the corresponding team-level source. Club, shirt number, role and squad membership are source-backed. Goals and assists are refreshed every minute from named live match events, while FIFA's [official player-statistics page](https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/statistics/player-statistics) remains linked as the canonical reference. Prices, fantasy points, xG and scout ratings are visibly labelled WCAI estimates.
+[Watch the narrated demo](demo-video/WCAI-Hackathon-Demo.mp4) · [Run locally](#run-locally) · [Explore the architecture](#architecture) · [Read the security model](SECURITY.md)
 
-## What the demo does
+</div>
 
-- Build a squad on an interactive pitch with 4-3-3, 4-2-3-1, 3-5-2, 4-4-2, and 5-3-2 formations.
-- Search all 1,248 players in FIFA's confirmed 26-player final squads for all 48 World Cup 2026 teams by position, team, price, availability, and points.
-- Unlock every Gemini conversation and Analytics request through a server-side Pro membership or a 15-minute x402 Match Pass. Locked prompts never reach Gemini and instead return a complete feature/access explanation.
-- Ask the entitled Gemini-powered tactical assistant to search players, rank positions, analyse the squad, read the dated World Cup snapshot, and propose a structured starting XI.
-- Confirm an AI lineup in the UI to apply the exact player IDs and formation after server-side budget and position validation.
-- Open Matchday for a one-minute-refresh live event-feed fixture and score view; unknown scores and official starting XIs are not invented.
-- Open **Tournament HQ** for a 48-team World Cup directory: group overview, knockout bracket, filterable fixtures, and squad-scoped Scout Cards. The schedule is clearly marked as a community live feed; all player records come from FIFA's dated official final-squad list.
-- Compare players in the original **Scout Card** view: price, verified goals/assists where available, model xG, points, readiness and source status are kept distinct.
-- Click any selected player on the main pitch to open an individual **Player Intel Card**. It fetches player-specific source metadata plus a clearly labelled WCAI model layer: radar, five-point signal trend, tactical attributes and scout brief. The small left swap control preserves replacement; the red control removes the player.
-- Run one unified Deep Tactical Analytics flow from the sidebar or chat panel. It evaluates formation balance, authenticated budget, verified World Cup contributions, model xG, availability, injury risk and price efficiency before producing an executable action.
-- Open **Gaffer Matchday Brief** for a source-aware pre-match cockpit: fixture context, budget-valid XI, captain/vice-captain signals, risk flags and two tactical scenarios.
-- Use the premium **What-if Tactical Lab** to compare all supported formations against the same server-side budget without mutating the saved squad; only a separate explicit apply action can change the pitch.
-- Confirm or explicitly reject every AI lineup/transfer proposal. Rejection leaves the persisted squad unchanged.
-- Use the `Kaan` judge/demo account in a deliberately locked initial state, then activate all Pro features for free from the membership dialog. This branch is username-scoped, labelled simulated and never charges money.
-- Bridge a one-time 20 USDC budget boost through the CCTP flow. Local development uses a clearly labelled simulation until wallet signing is configured.
-- Approve a transfer through the backend MCP client. The default transport starts the standalone MCP server over stdio and returns a structured receipt.
-- Open **Action Ledger** to inspect a durable intent and receipt for every membership unlock, lineup application, transfer and CCTP attempt. The same `Idempotency-Key` returns its original receipt and cannot silently replay a provider mutation.
-- The redesigned **Manager Ledger** is also the x402 access console: it explains what Pro / Match Pass unlocks, opens the wallet + membership dialog, filters access/tactical/funding receipts, and exposes receipt details without describing demo transport as a real settlement.
-- Persist a validated squad to SQLite, with server-side catalog, position, duplicate, availability, and budget checks.
+<a href="demo-video/WCAI-Hackathon-Demo.mp4">
+  <img src="demo-video/WCAI-Hackathon-Demo-Thumbnail.png" alt="WCAI — World Cup AI Command Centre demo" width="100%" />
+</a>
 
-## Hackathon technology mapping
+> **Hackathon demo:** click the image above to watch the complete **8:45 English-narrated product tour**. It covers the interactive pitch, player intelligence, Gemini analysis, a confirmed 3-5-2 lineup, MCP receipts, Matchday Brief, Tactical Lab, x402 access, CCTP funding, Tournament HQ and the Action Ledger.
 
-| Injective technology | How WCAI uses it | Current demo status |
+## The problem
+
+World Cup fans make fantasy and tactical decisions across disconnected match feeds, squad lists, statistics, AI chats and payment products. That creates three practical failures:
+
+1. **The data is difficult to trust.** Official facts, live events and model estimates are often presented as if they were the same thing.
+2. **AI advice is difficult to act on safely.** A chat response may mention one eleven while the UI applies another, change the wrong player or ignore the selected formation.
+3. **Premium AI has no transparent action trail.** Fans cannot easily see why access was granted, what was approved or whether an on-chain action actually settled.
+
+## The WCAI solution
+
+WCAI turns a football question into a transparent, budget-valid and user-approved squad decision:
+
+```text
+Ask → Analyse → Review exact proposal → Approve or reject → Validate through MCP → Audit the receipt
+```
+
+The AI can discuss a matchup without touching the squad, recommend a single replacement without rebuilding the entire eleven, or generate an exact formation-aware lineup when the user explicitly requests one. No AI-generated mutation is persisted until the manager confirms it.
+
+### What a manager can do
+
+- Explore **48 World Cup team pools and 1,248 source-linked players** from the dated FIFA squad snapshot.
+- Build an eleven on an interactive pitch using **4-3-3, 4-4-2, 4-2-3-1, 3-5-2 or 5-3-2**.
+- Inspect national-team player cards with shirt number, club, roster provenance, availability and clearly separated official facts versus WCAI estimates.
+- Ask Gemini for conversational match analysis, position rankings, player reports, one-player replacements or a complete lineup.
+- Approve or reject tactical proposals; lineup and transfer mutations are never silently applied.
+- Compare formations in the non-mutating **Tactical Lab** and open a source-aware **Matchday Brief**.
+- Follow live competition context through **Tournament HQ**, fixtures, knockout routes and squad intelligence.
+- Unlock premium AI through a membership or a time-limited **x402 Match Pass**.
+- Add a one-time fantasy budget rail through **Circle CCTP v2 on testnet**.
+- Audit access, funding, lineup and transfer activity in a replay-safe **Action Ledger**.
+
+## Why this is useful
+
+| Fan need | WCAI response |
+| --- | --- |
+| “Who is more likely to win this matchup?” | Conversational analysis first; no unwanted lineup proposal. |
+| “Who can replace this one player?” | A constrained, same-role transfer proposal instead of a full squad reset. |
+| “Build a 3-5-2 with Messi and Yamal.” | Exact formation, required-player and budget validation before an approval card appears. |
+| “Which information is official?” | Source-backed roster facts and live overlays are visibly separated from WCAI estimates. |
+| “What did the AI actually change?” | MCP receipt plus a durable, idempotent Action Ledger entry. |
+| “How do I access premium analysis?” | HTTP-native x402 access with a wallet-signed testnet payment path. |
+| “How does cross-chain USDC affect the product?” | Confirmed CCTP burn/attest/mint receipts unlock a one-time fantasy budget boost. |
+
+## Injective technology, used as product infrastructure
+
+WCAI does not add blockchain as a decorative badge. Each technology controls a distinct part of the fan experience.
+
+| Technology | Role inside WCAI | Verifiable implementation |
 | --- | --- | --- |
-| x402 | Membership and Match Pass purchases expose an HTTP 402 challenge with the x402 v2 `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, and `PAYMENT-RESPONSE` flow. Entitlements are stored server-side and protected endpoints never trust a browser premium flag. | Kaan has a username-scoped, zero-charge demo grant. All other accounts remain payment-gated by default; optional simulated purchases require an additional explicit environment flag. Configure a compatible facilitator and receiver for settlement. |
-| USDC CCTP | The backing flow models source burn → Circle attestation → destination mint and increases the Injective budget by 20 USDC. | The current local flow returns a labelled deterministic simulation; production wallet signing is the next integration step. |
-| MCP Server | `backend/app/mcp/server.py` exposes `get_squad`, `apply_transfer`, `apply_lineup`, `set_formation`, and `get_player_details`. Confirmed transfer and lineup APIs call the server through MCP stdio by default. | Real MCP stdio is enabled by default. Set `MCP_SIMULATION=true` for an offline fallback. |
-| Agent Skills | Gemini function calling exposes player search, rankings, squad analysis, budget validation, current World Cup snapshot, lineup proposals, transfer suggestions, and premium reports. | Gemini uses `GEMINI_MODEL`; a rule-based fallback remains available without a key. |
+| **x402** | Protects Gemini chat, Deep Tactical Analytics and time-limited Match Pass access using an HTTP `402 Payment Required` challenge and wallet authorization. | [`lib/x402.ts`](lib/x402.ts), [`backend/app/routers/access.py`](backend/app/routers/access.py), [`backend/app/x402.py`](backend/app/x402.py), [`x402-facilitator/server.mjs`](x402-facilitator/server.mjs) |
+| **USDC CCTP v2** | Moves 20 test USDC from Sepolia to Injective EVM Testnet through burn → Circle attestation → mint, then unlocks a one-time fantasy budget rail after receipt verification. | [`components/CctpBridgeModal.tsx`](components/CctpBridgeModal.tsx), [`lib/cctp.ts`](lib/cctp.ts), [`backend/app/cctp_flow.py`](backend/app/cctp_flow.py), [`backend/app/routers/cctp.py`](backend/app/routers/cctp.py) |
+| **MCP Server** | Converts an explicitly approved lineup or transfer into a constrained football action with catalog, formation, position and budget checks. | [`backend/app/mcp/server.py`](backend/app/mcp/server.py), [`backend/app/mcp/client.py`](backend/app/mcp/client.py) |
+| **Agent Skills** | Gives Gemini typed football tools for search, ranking, squad analysis, reports, replacements, budget validation and formation-aware lineup generation. | [`backend/app/agent/skills.py`](backend/app/agent/skills.py), [`backend/app/agent/prompts.py`](backend/app/agent/prompts.py), [`backend/app/agent/gemini_client.py`](backend/app/agent/gemini_client.py) |
 
-Injective is the destination-chain and wallet context for the product. The repo demonstrates the application workflow and protocol boundaries. World Cup data is represented by a dated FIFA roster/fixture snapshot with source URLs; a production deployment should refresh it from an authenticated live feed before each matchday.
+### 1. x402: premium AI without an opaque checkout
+
+```mermaid
+sequenceDiagram
+    participant Fan
+    participant UI as WCAI UI
+    participant API as FastAPI
+    participant Wallet
+    participant Facilitator as Injective x402 Facilitator
+
+    Fan->>UI: Unlock Match Pass
+    UI->>API: POST /api/access/unlock
+    API-->>UI: 402 + payment requirements
+    UI->>Wallet: Request EIP-3009 authorization
+    Wallet-->>UI: Signed authorization
+    UI->>API: Retry with PAYMENT-SIGNATURE
+    API->>Facilitator: Verify and settle
+    Facilitator-->>API: Confirmed payer + receipt
+    API-->>UI: Time-limited AI entitlement
+```
+
+- Uses the official `@injectivelabs/x402` package and Injective EVM Testnet (`eip155:1439`).
+- The API grants access only after facilitator verification **and** settlement succeed.
+- The preconfigured judge account has an explicitly labelled `0 USDC` demo entitlement; it never masquerades as a real payment.
+- Every other account fails closed when the facilitator, receiver or asset is not configured.
+
+### 2. CCTP: cross-chain value tied to a real product action
+
+WCAI uses Circle CCTP v2 for a fixed testnet funding journey:
+
+1. The connected wallet approves and burns 20 test USDC on Sepolia.
+2. WCAI polls Circle Iris for the signed attestation.
+3. The wallet mints the corresponding test USDC on Injective EVM Testnet.
+4. FastAPI independently verifies sender, contracts, selectors, domains, amount and successful receipts.
+5. Only then is the one-time 20M fantasy budget backing recorded.
+
+The browser wallet signs every transaction. WCAI never receives a seed phrase or private key.
+
+### 3. MCP: consent becomes a constrained action
+
+The standalone stdio MCP server exposes five football tools:
+
+`get_squad` · `get_player_details` · `set_formation` · `apply_transfer` · `apply_lineup`
+
+Gemini produces advice and structured proposals; MCP is the action boundary. The server rejects unknown players, duplicate IDs, invalid position counts, unsupported formations and over-budget elevens. Confirmed actions return structured receipts that are persisted in the Action Ledger.
+
+### 4. Agent Skills: a football agent, not an unrestricted chatbot
+
+Gemini receives typed WCAI skills instead of direct database mutation access:
+
+`search_player` · `rank_position` · `analyze_squad` · `get_player_report` · `suggest_player_replacement` · `suggest_transfer` · `validate_budget` · `suggest_lineup`
+
+The system prompt enforces domain scope, distinguishes conversation from mutation intent and requires structured player IDs for any proposal. Irrelevant prompts are refused, locked prompts never reach Gemini, and unavailable provider calls fall back to safe deterministic behaviour.
+
+## End-to-end fan journey
+
+```mermaid
+flowchart LR
+    A[Official squad snapshot<br/>+ live match feed] --> B[Player & Tournament Intelligence]
+    B --> C[Gemini Agent Skills]
+    X[x402 membership<br/>or Match Pass] --> C
+    C --> D{User intent}
+    D -->|Discuss| E[Non-mutating analysis]
+    D -->|Change one player| F[Transfer proposal]
+    D -->|Build an XI| G[Lineup proposal]
+    F --> H{Approve or reject}
+    G --> H
+    H -->|Reject| C
+    H -->|Approve| I[MCP validation]
+    I --> J[Saved squad + receipt]
+    J --> K[Action Ledger]
+    L[CCTP confirmed funding] --> J
+```
+
+## World Cup data and honesty model
+
+WCAI is designed to make provenance visible rather than hide uncertainty.
+
+| Data class | Examples | How it is presented |
+| --- | --- | --- |
+| **Official snapshot facts** | Team, player, role, shirt number, club and final-squad membership | Linked to the FIFA World Cup 2026 squad-list source; snapshot dated **2026-07-15**. |
+| **Runtime live overlays** | Fixtures, scores, goals and assists when exposed by the configured event feed | Refreshed at runtime and labelled with source/update time. Unavailable is not converted into an invented zero. |
+| **WCAI estimates** | Fantasy price, points, xG, readiness, risk and scout rating | Explicitly labelled as application estimates, never as official FIFA ratings. |
+
+The catalog contains **48 teams × 26 players = 1,248 players**. Import and provenance logic lives in [`scripts/import_official_fifa_squads.py`](scripts/import_official_fifa_squads.py), with the generated snapshot in [`data/worldcup_2026_rosters.json`](data/worldcup_2026_rosters.json).
 
 ## Architecture
 
-```text
-Next.js 16 / React 19 UI
-  ├─ pitch, squad selection, chat, auth, receipts
-  └─ lib/api.ts → authenticated requests
+```mermaid
+flowchart TB
+    subgraph Browser[Next.js 16 / React 19]
+        UI[Pitch, cards, chat, Tournament HQ]
+        W[MetaMask / EIP-1193]
+        X402C[x402 client]
+        CCTPC[CCTP client]
+    end
 
-FastAPI backend
-  ├─ routers/          auth, access, players, agent, squad, transfers, CCTP
-  ├─ agent/            Gemini client + Agent Skills + fallback logic
-  ├─ mcp/              standalone MCP server + stdio client
-  ├─ access.py         membership/pass policy + entitlement audit records
-  ├─ x402.py           x402 facilitator verification boundary
-  ├─ cctp_flow.py      CCTP burn/attest/mint adapter boundary
-  └─ data.py / db.py   shared player catalog + SQLite persistence
+    subgraph API[FastAPI]
+        AUTH[JWT auth + premium gate]
+        DATA[World Cup data + live overlays]
+        AGENT[Gemini + Agent Skills]
+        LEDGER[SQLite squad + operation ledger]
+        VERIFY[x402 and CCTP verification]
+    end
+
+    subgraph Actions[Constrained action layer]
+        MCP[stdio MCP server]
+    end
+
+    subgraph Injective[Protocol services]
+        FAC[Private x402 facilitator]
+        INJ[Injective EVM Testnet]
+        CIRCLE[Circle Iris / CCTP v2]
+    end
+
+    UI --> AUTH
+    UI --> DATA
+    AUTH --> AGENT
+    AGENT --> MCP
+    MCP --> LEDGER
+    W --> X402C --> AUTH
+    W --> CCTPC --> CIRCLE
+    X402C --> FAC --> INJ
+    CCTPC --> INJ
+    VERIFY --> FAC
+    VERIFY --> CIRCLE
+    VERIFY --> LEDGER
 ```
 
-## Stack
+### Repository map
 
-- Frontend: Next.js 16.2, React 19, Tailwind CSS 4
-- Backend: Python 3.10+, FastAPI, Pydantic, SQLite
-- AI: Google Gemini API with function calling
-- Protocols: x402, Circle CCTP, Model Context Protocol
+| Path | Responsibility |
+| --- | --- |
+| [`app/`](app) | Next.js routes for INJ Control, Tournament HQ and Manager Ledger. |
+| [`components/`](components) | Pitch, player intelligence, chat, Tactical Lab, access and CCTP interfaces. |
+| [`lib/`](lib) | Typed API client plus browser-side x402 and CCTP flows. |
+| [`backend/app/agent/`](backend/app/agent) | Gemini orchestration, system policy and typed Agent Skills. |
+| [`backend/app/mcp/`](backend/app/mcp) | Standalone MCP server and client transport. |
+| [`backend/app/routers/`](backend/app/routers) | Authenticated API boundaries for squads, access, CCTP and operations. |
+| [`x402-facilitator/`](x402-facilitator) | Private Injective x402 verify/settle sidecar. |
+| [`data/`](data) | Source-labelled World Cup roster and match snapshots. |
+| [`backend/tests/`](backend/tests) | Regression coverage for access, agent behaviour, formations, receipts and provenance. |
+| [`demo-video/`](demo-video) | Narrated hackathon video, thumbnail and reproducible browser automation. |
 
 ## Run locally
 
-### Backend
+### Prerequisites
 
-```bash
-cd backend
-pip install -r requirements.txt
-cp .env.example .env
-# Add GEMINI_API_KEY when Gemini responses are required.
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+- Node.js 22+
+- Python 3.11+
+- npm
+- MetaMask or another EIP-1193 wallet only for the optional x402/CCTP testnet flows
+
+### 1. Install the frontend
+
+```powershell
+git clone https://github.com/kaanklcc/worldcupsquad.git
+cd worldcupsquad
+npm install
+
+@"
+NEXT_PUBLIC_API_URL=http://localhost:8000
+"@ | Set-Content .env.local
 ```
 
-On Windows PowerShell, `Copy-Item .env.example .env` is equivalent to `cp`.
+### 2. Configure and run the API
 
-Important local settings:
+```powershell
+cd backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+Set only the operator-owned values in `backend/.env`:
 
 ```env
-GEMINI_MODEL=gemini-3.1-flash-lite
-X402_DEMO_MODE=true
-X402_ALLOW_SIMULATED_PURCHASES=false
-MCP_SIMULATION=false
+GEMINI_API_KEY=
+JWT_SECRET_KEY=
+X402_FACILITATOR_URL=
+X402_PAY_TO=
+CORS_ORIGINS=http://localhost:3000
 ```
 
-`MCP_SIMULATION=false` starts `app.mcp.server` as a child process and calls it through the MCP stdio protocol. Use `true` only when running an offline presentation or when the child process cannot be started.
+- `GEMINI_API_KEY`: enables the live Gemini provider; safe fallback behaviour remains available without it.
+- `JWT_SECRET_KEY`: generate a unique random secret of at least 32 characters.
+- `X402_PAY_TO`: a **public Injective EVM Testnet receiver address**, never a private key.
+- `X402_FACILITATOR_URL`: optional until running the real x402 testnet path below.
+- `INJECTIVE_MNEMONIC`: unused by WCAI and must remain empty.
 
-### Frontend
+Start the API:
 
-```bash
-npm install
+```powershell
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+API health: [`http://localhost:8000/health`](http://localhost:8000/health)<br />
+OpenAPI: [`http://localhost:8000/docs`](http://localhost:8000/docs)
+
+### 3. Run the UI
+
+In another terminal, from the repository root:
+
+```powershell
 npm run dev
 ```
 
-Open http://localhost:3000. The frontend expects the backend at `http://localhost:8000`; set `NEXT_PUBLIC_API_URL` in `.env.local` to change it.
+Open [`http://localhost:3000`](http://localhost:3000).
 
-## Demo walkthrough
+### 4. Optional: run real x402 settlement on testnet
 
-1. Log in with the Kaan judge/demo account. Its AI, Analytics and Finance access starts locked.
-2. Open **Membership Locked** or **Unlock Deep Tactical Analytics**, then select **Activate Free Demo Membership**. The receipt explicitly says that no money was charged.
-3. Add players to the pitch. The picker exposes all 48 official FIFA squad pools and includes a national-team filter; the backend re-validates catalog, position, availability, duplicates, and budget.
-4. Ask the AI about a player, a position, the current matchday, or a starting XI such as “Arjantin–İngiltere için 3-5-2 kadro öner”.
-5. Review the structured lineup card and choose **Apply Lineup** or **Reject**. The exact IDs are persisted only after confirmation.
-6. Open **Analytics** or run **Deep Tactical Analytics**. Both use the same richer analysis pipeline.
-7. Review the budget-valid sell/buy action and choose **Confirm Change** or **Reject**.
-8. Connect/save an Injective wallet and use **Acquire Backing** once to run the CCTP flow and expand the budget by 20M.
-9. Watch the MCP/CCTP receipts; simulations are visibly labelled.
-10. Use **Execute Changes** to persist the final squad snapshot.
-
-### Regression tests
-
-The backend includes a no-network `unittest` suite covering the premium gate, x402 v2 challenge, replay-safe membership receipts, wallet/CCTP invariants, exact formation persistence, idempotent lineup application, transfer validation, Tournament HQ provenance, Matchday Brief provenance and Tactical Lab access. Run it from the repository root:
+The judge demo entitlement is free and visibly labelled. To exercise an actual wallet-signed x402 flow with another account:
 
 ```powershell
-backend\venv\Scripts\python.exe -m unittest discover -s backend\tests -v
+Copy-Item x402-facilitator/.env.example x402-facilitator/.env
+# Add a fresh, low-balance, testnet-only facilitator burner key and receiver.
+npm run facilitator
 ```
 
-## API
+Then configure the matching `X402_FACILITATOR_URL`, `X402_PAY_TO`, asset and network in `backend/.env`. Full isolation and health-check instructions are in [`x402-facilitator/README.md`](x402-facilitator/README.md).
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/auth/register` | Create a manager |
-| `POST` | `/api/auth/login` | Get a JWT session |
-| `GET` | `/api/players` | Load the World Cup player catalog |
-| `GET` | `/api/players/{player_id}/intel` | Load one player’s source-aware Intel Card data and labelled model signals |
-| `GET` | `/api/players/meta` | Load roster snapshot date and FIFA source URLs |
-| `GET` | `/api/worldcup/snapshot` | Load dated FIFA semifinal fixtures and provenance |
-| `GET` | `/api/worldcup/tournament` | Load 48-team groups, fixtures, bracket and source-aware roster details |
-| `GET` | `/api/worldcup/matchday-brief` | Load a budget-valid, source-aware Matchday Brief |
-| `POST` | `/api/tactical-lab/compare` | Premium, non-mutating formation comparison |
-| `POST` | `/api/agent` | Chat with Gemini / fallback agent |
-| `GET` | `/api/access/status` | Read server-side membership, Match Pass, wallet and feature access |
-| `POST` | `/api/access/unlock` | Activate Kaan demo membership or process an x402 access purchase |
-| `POST` | `/api/access/wallet` | Validate and save an Injective/EVM wallet address |
-| `GET` | `/api/squad/load` | Load the authenticated squad |
-| `POST` | `/api/squad/save` | Validate and persist a squad snapshot |
-| `POST` | `/api/squad/apply-lineup` | Apply a confirmed structured AI lineup |
-| `POST` | `/api/transfers/execute` | Validate and execute an MCP transfer |
-| `POST` | `/api/cctp` | Run the one-time CCTP backing flow |
-| `GET` | `/api/operations/recent` | Read the authenticated manager's durable action ledger |
-| `GET` | `/docs` | OpenAPI / Swagger documentation |
+### 5. Optional: run the CCTP testnet journey
 
-## Verification
+1. Connect the same EVM address that is saved in the WCAI access console.
+2. Obtain Sepolia test ETH, Sepolia test USDC and Injective EVM Testnet gas.
+3. Select **Acquire 20 USDC backing**.
+4. Review each wallet request: approve, burn and destination mint.
+5. Wait for the Circle attestation and WCAI receipt verification.
 
-```bash
+This repository is intentionally testnet-only. Do not configure mainnet assets, RPCs or personal-wallet private keys.
+
+## Judge walkthrough
+
+The full journey is demonstrated in [`demo-video/WCAI-Hackathon-Demo.mp4`](demo-video/WCAI-Hackathon-Demo.mp4). For a fast hands-on review:
+
+1. Register or sign in and inspect the access console.
+2. Select **3-5-2**, add/remove a player and open a Player Intel card.
+3. Ask: `Analyse Argentina versus England, but do not change my lineup.`
+4. Ask: `Replace Cubarsí with an attacking Spanish defender.` Review and reject or approve the single-player proposal.
+5. Ask: `Build a budget-valid 3-5-2 with Messi and Yamal.` Confirm that the proposal contains the requested formation and exact players.
+6. Apply the lineup and inspect its MCP receipt in **Action Ledger**.
+7. Open **Deep Tactical Analytics**, **Matchday**, **Tactical Lab** and **Tournament HQ**.
+8. Open **Finance** to inspect x402 access and the wallet-signed CCTP testnet sequence.
+
+## Quality and verification
+
+```powershell
+# Frontend
 npm run lint
 npm run build
 
+# Backend
 cd backend
-python -m compileall -q app
+.\venv\Scripts\python.exe -m unittest discover -s tests -v
+.\venv\Scripts\python.exe -m compileall -q app
 ```
 
-The repository intentionally labels simulated CCTP/MCP paths in API responses and the UI. This keeps the hackathon demo usable while making the boundary to live wallet, attestation, and matchday data integrations clear.
+The backend currently includes **17 regression scenarios** covering:
 
-### Payment and chain boundaries
+- premium gating without leaking locked prompts to Gemini;
+- x402 v2 challenge construction and replay-safe receipts;
+- exact formation and required-player persistence;
+- conversational analysis versus mutation intent;
+- single-player replacement behaviour;
+- MCP lineup and transfer validation;
+- CCTP wallet matching and one-time funding invariants;
+- roster provenance and live-stat labelling;
+- Tactical Lab access and operation-ledger idempotency.
 
-- The official x402 v2 flow is `402 Payment Required` → `PAYMENT-REQUIRED` → client-signed `PAYMENT-SIGNATURE` → facilitator verification/settlement → `PAYMENT-RESPONSE`. The local Kaan branch bypasses this only as an explicit zero-charge judge demo.
-- `X402_DEMO_MODE=true` does **not** unlock arbitrary users. Set `X402_ALLOW_SIMULATED_PURCHASES=true` only for a labelled presentation environment.
-- Real x402 deployment requires `X402_FACILITATOR_URL`, `X402_ASSET`, and a non-zero `X402_PAY_TO`; production use refuses zero token/receiver addresses. Access is granted only after facilitator verification **and settlement**.
-- Access grants, MCP lineup/transfer mutations and CCTP backing use a durable idempotency ledger. A completed receipt is replayed for the same `Idempotency-Key`; a key cannot be reused for a different payload. A simulated receipt is never represented as a chain settlement.
-- CCTP is accurately described as USDC burn → Circle attestation → destination mint. The included adapter remains visibly simulated until wallet signing and Circle configuration are provided.
+## Security boundaries
 
-References: [Injective USDC + CCTP tutorial](https://docs.injective.network/developers-defi/usdc-cctp-tutorial), [Injective EVM network information](https://docs.injective.network/developers-evm/network-information), [x402 v2 flow](https://docs.cdp.coinbase.com/x402/core-concepts/how-it-works).
+- All payment and bridge flows are restricted to **Injective EVM Testnet (`eip155:1439`) and Sepolia**.
+- No seed phrase, user private key or facilitator key belongs in the FastAPI environment.
+- Wallet signatures happen in MetaMask; the backend receives only public addresses, authorizations and transaction receipts.
+- The x402 facilitator is a separate private service and should use a disposable, low-balance testnet burner key.
+- The API verifies x402 settlement before access and CCTP receipts before budget mutation.
+- Squad, transfer, access and funding operations use idempotency keys to prevent accidental replay.
+- `.env`, SQLite, logs and local build output are ignored by Git.
 
-Built for the **Injective Global Cup Hackathon 2026**.
+See [`SECURITY.md`](SECURITY.md) for the complete operator checklist and disclosure guidance.
+
+## Hackathon judging fit
+
+| Injective Global Cup criterion | WCAI evidence |
+| --- | --- |
+| **Usefulness and clarity** | Solves a concrete fan problem: turning fragmented World Cup intelligence into an explainable squad decision. |
+| **Quality of execution** | Typed frontend/backend boundary, exact proposal cards, explicit consent, receipt ledger and regression suite. |
+| **Simplicity and usability** | One command-centre UI from question to approved action; no blockchain knowledge required for normal squad analysis. |
+| **Code structure and documentation** | Separated Next.js UI, FastAPI domain API, Agent Skills, stdio MCP server and private x402 facilitator. |
+| **World Cup data integration** | 48 teams, 1,248 sourced players, runtime fixture/event overlays, Matchday Brief and Tournament HQ. |
+| **New Injective technologies** | x402 gates premium AI, CCTP funds the fantasy rail, MCP validates approved actions, Agent Skills constrain Gemini. |
+| **Future contribution potential** | Additional live-data adapters, public MCP clients, new paid analytics skills and mainnet migration can be added behind existing boundaries. |
+
+## Responsible demo status
+
+WCAI is a hackathon prototype, not a betting, custody or financial-advice product. Fantasy prices and tactical ratings are application estimates. The included blockchain journey uses test tokens with no monetary value. A free judge path is explicitly marked as simulated; provider-confirmed receipts are labelled separately.
+
+## Official references
+
+- [Injective Global Cup hackathon](https://www.hackquest.io/hackathons/The-Injective-Global-Cup)
+- [Injective x402 documentation](https://docs.injective.network/developers-ai/x402)
+- [Injective USDC + CCTP tutorial](https://docs.injective.network/developers-defi/usdc-cctp-tutorial)
+- [Injective EVM network information](https://docs.injective.network/developers-evm/network-information)
+- [Circle CCTP documentation](https://developers.circle.com/cctp)
+- [FIFA World Cup 2026 teams](https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/teams)
+- [FIFA World Cup 2026 squad-list source](https://fdp.fifa.org/assetspublic/ce281/pdf/SquadLists-English.pdf)
+
+## License
+
+Released under the [`MIT License`](LICENSE).
+
+---
+
+<div align="center">
+
+**Built for the Injective Global Cup 2026**<br />
+x402 · USDC CCTP · MCP Server · Agent Skills
+
+</div>

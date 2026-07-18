@@ -44,6 +44,8 @@ logs/
 # Environment variables
 .env
 .env.*.local
+x402-facilitator/.env
+demo-video/generated/
 
 # Misc
 .DS_Store

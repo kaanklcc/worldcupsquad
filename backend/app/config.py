@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # Server
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    # Comma-separated browser origins. Keep this explicit in public deployments;
+    # a wildcard cannot be combined safely with credentialed JWT requests.
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001"
 
     class Config:
         env_file = ".env"

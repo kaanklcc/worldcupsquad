@@ -25,14 +25,13 @@ def create_app() -> FastAPI:
         redoc_url="/redoc"
     )
 
-    # Configure CORS
+    # Credentialed requests must have an explicit origin list. Operators add the
+    # deployed frontend URL through CORS_ORIGINS rather than opening the API to
+    # every browser origin.
+    cors_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",  # Next.js dev server
-            "http://127.0.0.1:3000",
-            "http://localhost:3001",
-        ],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

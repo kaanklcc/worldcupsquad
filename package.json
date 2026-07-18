@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "facilitator": "node x402-facilitator/server.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
