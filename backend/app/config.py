@@ -1,10 +1,13 @@
 """
 Configuration from environment variables using pydantic-settings.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    app_env: str = "development"
     # Gemini LLM
     gemini_api_key: str = ""
     # Stable function-calling model. Override with GEMINI_MODEL when needed.
@@ -14,9 +17,16 @@ class Settings(BaseSettings):
     # hardcoded fallback because an accidental default would make every
     # deployment sign tokens with the same key.
     jwt_secret_key: str = ""
+    jwt_issuer: str = "wcai-api"
+    jwt_audience: str = "wcai-web"
+    jwt_expire_minutes: int = 720
+    auth_cookie_name: str = "wcai_session"
+    csrf_cookie_name: str = "wcai_csrf"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
 
-    # Injective
-    injective_mnemonic: str = ""
+    # Injective. User seed phrases and wallet private keys are deliberately not
+    # accepted by this API; every user transaction is signed in the browser.
     injective_testnet: bool = True
 
     # x402
@@ -57,15 +67,13 @@ class Settings(BaseSettings):
     live_event_feed_enabled: bool = True
 
     # Server
-    api_host: str = "0.0.0.0"
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
+    docs_enabled: bool = True
+    allowed_hosts: str = "localhost,127.0.0.1,testserver"
+    max_request_bytes: int = 1_048_576
     # Comma-separated browser origins. Keep this explicit in public deployments;
     # a wildcard cannot be combined safely with credentialed JWT requests.
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001"
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-
 
 settings = Settings()

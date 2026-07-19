@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import json
 import tempfile
 import unittest
@@ -7,15 +8,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app import db
+from app import cctp_flow, db
 from app.agent.gemini_client import GeminiAgentClient
 from app.agent.skills import suggest_lineup
 from app.config import settings
 from app.data import apply_live_player_totals, get_players, get_world_cup_snapshot
 from app.main import app
 from app.mcp import client as mcp_module
+from app.security import rate_limiter
 
 
 class AutoGafferRegressionTests(unittest.TestCase):
@@ -39,6 +42,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
             "mcp_simulation": settings.mcp_simulation,
             "live_stats_enabled": settings.live_stats_enabled,
             "live_event_feed_enabled": settings.live_event_feed_enabled,
+            "auth_cookie_secure": settings.auth_cookie_secure,
         }
         settings.jwt_secret_key = "test-only-jwt-secret-with-at-least-32-characters"
         settings.x402_demo_mode = True
@@ -51,6 +55,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         settings.mcp_simulation = True
         settings.live_stats_enabled = False
         settings.live_event_feed_enabled = False
+        settings.auth_cookie_secure = False
         mcp_module._mcp_client = None
 
     @classmethod
@@ -62,6 +67,10 @@ class AutoGafferRegressionTests(unittest.TestCase):
         cls._temp_dir.cleanup()
 
     def setUp(self):
+        self.client.cookies.clear()
+        rate_limiter.clear()
+        settings.x402_allow_simulated_purchases = True
+        self.recovery_codes = {}
         if db.DB_FILE.exists():
             db.DB_FILE.unlink()
         db.init_db()
@@ -75,11 +84,10 @@ class AutoGafferRegressionTests(unittest.TestCase):
                 "username": username,
                 "email": email,
                 "password": "Manager1",
-                "security_question": "club",
-                "security_answer": "injective",
             },
         )
         self.assertEqual(register.status_code, 200, register.text)
+        self.recovery_codes[username] = register.json()["recoveryCode"]
         login = self.client.post(
             "/api/auth/login",
             json={"username_or_email": username, "password": "Manager1"},
@@ -120,8 +128,8 @@ class AutoGafferRegressionTests(unittest.TestCase):
             self.assertIn("Deep Tactical Analytics", payload["message"])
             self.assertIn("x402", payload["message"])
 
-    def test_kaan_demo_membership_is_free_explicit_and_time_boxed(self):
-        token = self.register_and_login("Kaan")
+    def test_demo_membership_is_explicit_and_time_boxed_for_a_new_account(self):
+        token = self.register_and_login("freshjudge")
         before = self.client.get("/api/access/status", headers=self.auth(token)).json()
         self.assertFalse(before["membershipActive"])
 
@@ -136,6 +144,23 @@ class AutoGafferRegressionTests(unittest.TestCase):
         ).total_seconds()
         self.assertGreater(remaining, 29 * 60)
         self.assertLessEqual(remaining, 30 * 60)
+
+    def test_no_username_bypasses_a_disabled_demo_checkout(self):
+        settings.x402_allow_simulated_purchases = False
+        try:
+            token = self.register_and_login("Kaan")
+            access = self.client.get("/api/access/status", headers=self.auth(token)).json()
+            self.assertFalse(access["demoAccessAvailable"])
+            self.assertFalse(access["hasAiAccess"])
+
+            response = self.client.post(
+                "/api/access/unlock",
+                headers=self.auth(token),
+                json={"mode": "membership", "accessMethod": "demo"},
+            )
+            self.assertEqual(response.status_code, 403, response.text)
+        finally:
+            settings.x402_allow_simulated_purchases = True
 
     def test_any_new_manager_can_explicitly_activate_demo_pro_for_30_minutes(self):
         settings.x402_allow_simulated_purchases = True
@@ -225,7 +250,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
             settings.x402_allow_simulated_purchases = False
 
     def test_access_unlock_has_a_replay_safe_x402_ledger_receipt(self):
-        token = self.register_and_login("Kaan")
+        token = self.register_and_login("ledgerjudge")
         headers = {**self.auth(token), "Idempotency-Key": "demo-access-retry-regression"}
         payload = {"mode": "membership", "accessMethod": "demo", "hasPaidX402": False}
         first = self.client.post("/api/access/unlock", headers=headers, json=payload)
@@ -269,7 +294,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
                 "amount": 4.99,
                 "currency": "USDC",
                 "payer": wallet,
-                "receipt": "0xverified_x402_test_receipt",
+                "receipt": "0x" + "c" * 64,
                 "paymentResponse": "test-payment-response",
             })
             response = self.client.post(
@@ -302,8 +327,106 @@ class AutoGafferRegressionTests(unittest.TestCase):
         self.assertEqual(lab.status_code, 200, lab.text)
         self.assertEqual(lab.json()["accessSource"], "x402_verified")
 
+    def test_browser_session_is_httponly_and_cookie_mutations_require_csrf(self):
+        token = self.register_and_login("cookieuser")
+        login = self.client.post(
+            "/api/auth/login",
+            json={"username_or_email": "cookieuser", "password": "Manager1"},
+        )
+        self.assertIn("HttpOnly", login.headers.get("set-cookie", ""))
+        self.assertEqual(self.client.get("/api/auth/me").status_code, 200)
+
+        blocked = self.client.post(
+            "/api/access/wallet",
+            json={"walletAddress": "0x1111111111111111111111111111111111111111"},
+        )
+        self.assertEqual(blocked.status_code, 403, blocked.text)
+        allowed = self.client.post(
+            "/api/access/wallet",
+            headers=self.auth(token),
+            json={"walletAddress": "0x1111111111111111111111111111111111111111"},
+        )
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+
+    def test_password_reset_revokes_existing_tokens(self):
+        token = self.register_and_login("revokeuser")
+        reset = self.client.post(
+            "/api/auth/reset-password",
+            json={
+                "username_or_email": "revokeuser",
+                "recovery_code": self.recovery_codes["revokeuser"],
+                "new_password": "Manager2",
+            },
+        )
+        self.assertEqual(reset.status_code, 200, reset.text)
+        self.assertTrue(reset.json()["recoveryCode"].startswith("WCAI-"))
+        revoked = self.client.get("/api/access/status", headers=self.auth(token))
+        self.assertEqual(revoked.status_code, 401, revoked.text)
+        reused = self.client.post(
+            "/api/auth/reset-password",
+            json={
+                "username_or_email": "revokeuser",
+                "recovery_code": self.recovery_codes["revokeuser"],
+                "new_password": "Manager3",
+            },
+        )
+        self.assertEqual(reused.status_code, 400, reused.text)
+
+    def test_recovery_lookup_does_not_reveal_whether_an_account_exists(self):
+        self.register_and_login("recoveryuser")
+        existing = self.client.post(
+            "/api/auth/forgot-password-question",
+            json={"username_or_email": "recoveryuser"},
+        )
+        missing = self.client.post(
+            "/api/auth/forgot-password-question",
+            json={"username_or_email": "definitely-missing"},
+        )
+        self.assertEqual(existing.status_code, 200, existing.text)
+        self.assertEqual(existing.json(), missing.json())
+
+    def test_x402_settlement_receipt_cannot_unlock_two_accounts(self):
+        wallet = "0x1111111111111111111111111111111111111111"
+        receipt = "0x" + "d" * 64
+        tokens = [self.register_and_login(name) for name in ("payerone", "payertwo")]
+        verification = {
+            "verified": True,
+            "settled": True,
+            "amount": 4.99,
+            "currency": "USDC",
+            "payer": wallet,
+            "receipt": receipt,
+            "paymentResponse": "test-payment-response",
+        }
+        with patch("app.routers.access.get_x402_verifier") as get_verifier:
+            get_verifier.return_value.verify_and_settle = AsyncMock(return_value=verification)
+            first = self.client.post(
+                "/api/access/unlock",
+                headers={**self.auth(tokens[0]), "Idempotency-Key": "receipt-replay-first", "PAYMENT-SIGNATURE": "signed-one"},
+                json={"mode": "membership", "accessMethod": "x402", "walletAddress": wallet},
+            )
+            second = self.client.post(
+                "/api/access/unlock",
+                headers={**self.auth(tokens[1]), "Idempotency-Key": "receipt-replay-second", "PAYMENT-SIGNATURE": "signed-two"},
+                json={"mode": "membership", "accessMethod": "x402", "walletAddress": wallet},
+            )
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 409, second.text)
+        self.assertFalse(self.client.get("/api/access/status", headers=self.auth(tokens[1])).json()["membershipActive"])
+
+    def test_security_headers_and_request_size_limit(self):
+        health = self.client.get("/health")
+        self.assertEqual(health.headers.get("x-content-type-options"), "nosniff")
+        self.assertEqual(health.headers.get("x-frame-options"), "DENY")
+        oversized = self.client.post(
+            "/api/auth/login",
+            content=b"x" * (settings.max_request_bytes + 1),
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(oversized.status_code, 413, oversized.text)
+
     def test_cctp_requires_saved_matching_wallet_and_is_one_time(self):
-        token = self.register_and_login("Kaan")
+        token = self.register_and_login("cctpjudge")
         self.unlock_demo(token)
         wallet = "0x1111111111111111111111111111111111111111"
         other_wallet = "0x2222222222222222222222222222222222222222"
@@ -361,6 +484,43 @@ class AutoGafferRegressionTests(unittest.TestCase):
         )
         self.assertEqual(repeated.status_code, 409, repeated.text)
 
+    def test_cctp_mint_must_match_the_message_attested_for_the_exact_burn(self):
+        wallet = "0x1111111111111111111111111111111111111111"
+        burn_input = (
+            cctp_flow.BURN_SELECTOR
+            + f"{20_000_000:064x}"
+            + f"{settings.cctp_destination_domain:064x}"
+            + wallet[2:].rjust(64, "0")
+            + settings.cctp_source_token[2:].lower().rjust(64, "0")
+        )
+        minted_message = "0x1234"
+        mint_input = (
+            cctp_flow.MINT_SELECTOR
+            + f"{64:064x}"
+            + f"{0:064x}"
+            + f"{2:064x}"
+            + minted_message[2:].ljust(64, "0")
+        )
+        burn_tx = {"from": wallet, "to": settings.cctp_token_messenger, "input": burn_input}
+        mint_tx = {"from": wallet, "to": settings.cctp_message_transmitter, "input": mint_input}
+
+        with patch(
+            "app.cctp_flow._confirmed_transaction",
+            new=AsyncMock(side_effect=[(burn_tx, {}), (mint_tx, {})]),
+        ), patch(
+            "app.cctp_flow.get_attestation",
+            new=AsyncMock(return_value={"status": "complete", "message": "0xabcd", "attestation": "0x01"}),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(cctp_flow.verify_cctp_receipts(
+                    wallet_address=wallet,
+                    amount_usdc=20,
+                    burn_tx_hash="0x" + "a" * 64,
+                    mint_tx_hash="0x" + "b" * 64,
+                ))
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertIn("not linked", raised.exception.detail)
+
     def test_supported_formations_produce_exact_position_counts(self):
         expected = {
             "4-3-3": {"GK": 1, "DF": 4, "MF": 3, "FW": 3},
@@ -381,7 +541,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
             self.assertEqual(actual, counts)
 
     def test_apply_lineup_persists_the_exact_confirmed_ids_and_formation(self):
-        token = self.register_and_login("Kaan")
+        token = self.register_and_login("lineupjudge")
         self.unlock_demo(token)
         proposal = suggest_lineup("3-5-2", strategy="attacking", max_budget=100)
         response = self.client.post(
@@ -406,7 +566,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         self.assertEqual(set(saved_ids), set(proposal["starting_player_ids"]))
 
     def test_lineup_action_is_idempotent_and_appears_once_in_ledger(self):
-        token = self.register_and_login("Kaan")
+        token = self.register_and_login("ledgerlineupjudge")
         self.unlock_demo(token)
         proposal = suggest_lineup("3-5-2", strategy="attacking", max_budget=100)
         payload = {
@@ -442,7 +602,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400, response.text)
 
     def test_transfer_rejects_duplicate_or_non_persisted_current_squad(self):
-        token = self.register_and_login("Kaan")
+        token = self.register_and_login("transferjudge")
         self.unlock_demo(token)
         players = get_players()
         sell = next(player for player in players if player.position == "MF")
@@ -600,9 +760,8 @@ class AutoGafferRegressionTests(unittest.TestCase):
         )
         self.assertEqual(locked.status_code, 402, locked.text)
 
-        # The free demo flag is intentionally limited to the Kaan account;
-        # use a fresh Kaan token to exercise the entitled path.
-        token = self.register_and_login("Kaan")
+        # Every reviewer uses the same explicit, time-boxed demo checkout.
+        token = self.register_and_login("tacticaljudge")
         self.unlock_demo(token)
         response = self.client.post(
             "/api/tactical-lab/compare",

@@ -3,7 +3,7 @@
 import { createPublicClient, createWalletClient, custom, getAddress, http, type Address } from 'viem';
 import { createNonce, getTokenName, signAuthorization } from '@injectivelabs/x402/eip3009';
 import { injectiveEvmTestnet } from '@injectivelabs/x402/networks';
-import { API_URL, authHeaders } from '@/lib/api';
+import { API_URL, authHeaders, ensureCsrfToken } from '@/lib/api';
 import type { Eip1193Provider } from '@/lib/cctp';
 
 interface PaymentRequirement {
@@ -65,8 +65,9 @@ function responseError(body: unknown, status: number): Error {
  * and settles it, so WCAI never receives a wallet private key.
  */
 export async function payWithX402<T>(path: string, body: Record<string, unknown>, idempotencyKey: string): Promise<T> {
+  await ensureCsrfToken();
   const initialHeaders = authHeaders({ 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey });
-  const init: RequestInit = { method: 'POST', headers: initialHeaders, body: JSON.stringify(body) };
+  const init: RequestInit = { method: 'POST', headers: initialHeaders, body: JSON.stringify(body), credentials: 'include' };
   const initial = await fetch(`${API_URL}${path}`, init);
   const initialBody = await initial.json().catch(() => ({}));
   if (initial.status !== 402) {
@@ -113,7 +114,7 @@ export async function payWithX402<T>(path: string, body: Record<string, unknown>
     'PAYMENT-SIGNATURE': encodeBase64(payment),
     'X-Payment': encodeBase64(payment),
   });
-  const retry = await fetch(`${API_URL}${path}`, { method: 'POST', headers: retryHeaders, body: JSON.stringify(body) });
+  const retry = await fetch(`${API_URL}${path}`, { method: 'POST', headers: retryHeaders, body: JSON.stringify(body), credentials: 'include' });
   const retryBody = await retry.json().catch(() => ({}));
   if (!retry.ok) throw responseError(retryBody, retry.status);
   return retryBody as T;

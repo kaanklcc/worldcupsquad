@@ -18,7 +18,7 @@
   <img src="demo-video/WCAI-Hackathon-Demo-Thumbnail.png" alt="WCAI — World Cup AI Command Centre demo" width="100%" />
 </a>
 
-> **Hackathon demo:** click the image above to watch the complete **8:45 English-narrated product tour**. It covers the interactive pitch, player intelligence, Gemini analysis, a confirmed 3-5-2 lineup, MCP receipts, Matchday Brief, Tactical Lab, x402 access, CCTP funding, Tournament HQ and the Action Ledger.
+> **Hackathon demo:** click the image above to watch the complete **10:24 English-narrated product tour**. It begins with a newly created locked account, shows the explicit 30-minute `0 USDC` Hackathon Demo Pro / Match Pass checkout, live entitlement countdown and Ledger receipt, then shows a Gemini lineup proposal followed by the manager pressing **Apply Lineup**, plus a one-player replacement proposal followed by **Confirm Change** and the visible MCP transfer result. It also covers the interactive pitch, player intelligence, Matchday Brief, Tactical Lab, x402 testnet access, CCTP funding, Tournament HQ and the Action Ledger.
 
 ## The problem
 
@@ -267,21 +267,26 @@ Set only the operator-owned values in `backend/.env`:
 ```env
 GEMINI_API_KEY=
 JWT_SECRET_KEY=
+AUTH_COOKIE_SECURE=false
 X402_FACILITATOR_URL=
 X402_PAY_TO=
 CORS_ORIGINS=http://localhost:3000
+ALLOWED_HOSTS=localhost,127.0.0.1
 ```
 
 - `GEMINI_API_KEY`: enables the live Gemini provider; safe fallback behaviour remains available without it.
 - `JWT_SECRET_KEY`: generate a unique random secret of at least 32 characters.
+- `AUTH_COOKIE_SECURE`: keep `false` only for local HTTP; set `true` on the public HTTPS deployment.
+- If the frontend and API are on different sites, also set `AUTH_COOKIE_SAMESITE=none`; keep `lax` when they share the same site/domain.
 - `X402_PAY_TO`: a **public Injective EVM Testnet receiver address**, never a private key.
 - `X402_FACILITATOR_URL`: optional until running the real x402 testnet path below.
-- `INJECTIVE_MNEMONIC`: unused by WCAI and must remain empty.
+- WCAI does not define an `INJECTIVE_MNEMONIC` setting and never accepts a user's seed phrase or private key.
+- Before deployment, replace `CORS_ORIGINS` and `ALLOWED_HOSTS` with the exact public frontend origin and API hostname. Set `DOCS_ENABLED=false` unless judges need the schema browser.
 
 Start the API:
 
 ```powershell
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 API health: [`http://localhost:8000/health`](http://localhost:8000/health)<br />
@@ -345,16 +350,21 @@ npm run build
 
 # Backend
 cd backend
-.\venv\Scripts\python.exe -m unittest discover -s tests -v
+.\venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\venv\Scripts\python.exe -m pytest -q
+.\venv\Scripts\python.exe -m pip_audit --local
+.\venv\Scripts\python.exe -m bandit -r app -q
 .\venv\Scripts\python.exe -m compileall -q app
 ```
 
-The backend currently includes **21 regression scenarios** covering:
+The backend currently includes **28 regression scenarios** covering:
 
 - premium gating without leaking locked prompts to Gemini;
 - locked → Demo Pro / Match Pass → expiry → renewable activation for a newly created account;
 - visible `0 USDC` simulated demo receipts, entitlement separation and replay-safe operation receipts;
 - x402 v2 challenge construction plus verified facilitator settlement for a non-demo account;
+- HttpOnly browser sessions, CSRF enforcement, JWT revocation, one-time high-entropy recovery codes and request-size limits;
+- cross-account x402 settlement replay prevention;
 - exact formation and required-player persistence;
 - conversational analysis versus mutation intent;
 - single-player replacement behaviour;
@@ -367,10 +377,13 @@ The backend currently includes **21 regression scenarios** covering:
 
 - All payment and bridge flows are restricted to **Injective EVM Testnet (`eip155:1439`) and Sepolia**.
 - No seed phrase, user private key or facilitator key belongs in the FastAPI environment.
+- Browser sessions use HttpOnly cookies, double-submit CSRF validation, expiry-aware JWTs and server-side token-version revocation. Passwords use versioned PBKDF2-HMAC-SHA256 with 600,000 iterations.
 - Wallet signatures happen in MetaMask; the backend receives only public addresses, authorizations and transaction receipts.
 - The x402 facilitator is a separate private service and should use a disposable, low-balance testnet burner key.
-- The API verifies x402 settlement before access and CCTP receipts before budget mutation.
+- The API verifies x402 settlement before access, consumes each settlement once, links each CCTP mint to the exact attested burn and prevents chain-receipt reuse across accounts.
 - Squad, transfer, access and funding operations use idempotency keys to prevent accidental replay.
+- Authentication, Gemini, checkout, tactical and live-refresh routes are rate-limited; request bodies and identifiers have explicit bounds.
+- Frontend and API responses include CSP, clickjacking, MIME-sniffing, referrer and permissions-policy protections.
 - `.env`, SQLite, logs and local build output are ignored by Git.
 
 See [`SECURITY.md`](SECURITY.md) for the complete operator checklist and disclosure guidance.
@@ -380,7 +393,7 @@ See [`SECURITY.md`](SECURITY.md) for the complete operator checklist and disclos
 | Injective Global Cup criterion | WCAI evidence |
 | --- | --- |
 | **Usefulness and clarity** | Solves a concrete fan problem: turning fragmented World Cup intelligence into an explainable squad decision. |
-| **Quality of execution** | Typed frontend/backend boundary, exact proposal cards, explicit consent, expiry-aware receipt ledger and 21 regression scenarios. |
+| **Quality of execution** | Typed frontend/backend boundary, exact proposal cards, explicit consent, expiry-aware receipt ledger and 28 regression scenarios. |
 | **Simplicity and usability** | One command-centre UI from question to approved action; a new reviewer can unlock a clearly labelled 30-minute demo without wallet friction. |
 | **Code structure and documentation** | Separated Next.js UI, FastAPI domain API, Agent Skills, stdio MCP server and private x402 facilitator. |
 | **World Cup data integration** | 48 teams, 1,248 sourced players, runtime fixture/event overlays, Matchday Brief and Tournament HQ. |

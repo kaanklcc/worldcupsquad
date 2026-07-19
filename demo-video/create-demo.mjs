@@ -6,8 +6,11 @@ import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const generated = join(import.meta.dirname, 'generated');
-const audioDir = join(generated, 'audio');
-const rawDir = join(generated, 'raw');
+// Keep each release's intermediate recording assets separate. This prevents
+// stale speech clips from an earlier narration being reused in a new demo.
+const releaseDir = join(generated, 'judge-demo-v3-approved-actions');
+const audioDir = join(releaseDir, 'audio');
+const rawDir = join(releaseDir, 'raw');
 const outputPath = join(import.meta.dirname, 'WCAI-Hackathon-Demo.mp4');
 const thumbnailPath = join(import.meta.dirname, 'WCAI-Hackathon-Demo-Thumbnail.png');
 const ttsPath = join(root, 'backend', 'venv', 'Scripts', 'edge-tts.exe');
@@ -30,26 +33,38 @@ const segments = [
   {
     title: 'SECURE MANAGER ACCESS',
     subtitle: 'Registration, recovery and authenticated sessions',
-    narration: 'The experience starts with manager access control. A new user can create an account with a recovery question, while an existing manager can use the password recovery flow. Authentication is handled by the FastAPI backend, and protected squad, analytics, payment and receipt endpoints require the authenticated manager session.',
+    narration: 'The experience starts with manager access control. A new user receives a high entropy, one-time recovery code instead of a guessable security question. Browser authentication uses an HTTP-only session cookie with CSRF protection, and protected squad, analytics, payment and receipt endpoints require the authenticated manager session.',
     action: 'authTour',
   },
   {
     title: 'SIGN IN TO WCAI',
-    subtitle: 'The password remains masked throughout the recording',
-    narration: 'For this walkthrough I am signing in to the dedicated hackathon demo account. The password is masked and no environment value, wallet private key, seed phrase or API key is shown. The account has a clearly labelled Demo Pro entitlement, so judges can inspect every premium workflow without spending funds.',
+    subtitle: 'A fresh reviewer account — credentials stay masked',
+    narration: 'For this walkthrough I am signing in to a fresh reviewer account. The password is masked and no environment value, wallet private key, seed phrase or API key is shown. Crucially, this account begins locked. Premium access is not pre-enabled for a judge or hidden behind a special account.',
     action: 'login',
+  },
+  {
+    title: 'PREMIUM STARTS LOCKED',
+    subtitle: 'A reviewer chooses access before any AI or analytics tool opens',
+    narration: 'This is the locked command centre. The header shows Membership Locked and protected AI, analytics and finance controls remain gated server-side. That gives the product a realistic entitlement journey while ensuring no chat request reaches Gemini before an active access decision exists.',
+    action: 'lockedAccess',
+  },
+  {
+    title: '30-MINUTE HACKATHON DEMO CHECKOUT',
+    subtitle: 'Explicit activation · 0 USDC · no wallet signature or settlement',
+    narration: 'The access console gives the reviewer two deliberate choices. Hackathon Demo Pro opens Gemini, Deep Tactical Analytics, MCP actions and finance. Hackathon Match Pass opens Gemini and analytics only. Both are clearly labelled 0 USDC simulations, last thirty minutes, require no wallet signature and never claim an on-chain settlement. I will explicitly activate Demo Pro.',
+    action: 'demoCheckout',
+  },
+  {
+    title: 'DEMO PRO IS ACTIVE AND AUDITABLE',
+    subtitle: 'Live countdown, scoped entitlements and a replay-safe receipt',
+    narration: 'After activation, the header displays Hackathon Demo Pro with a live countdown. The API records an idempotent Action Ledger receipt containing the simulated settlement label, zero USDC charge and expiry time. When the pass expires, the protected controls lock again and the reviewer can activate a new short-lived demo pass. The separate wallet-signed x402 testnet route remains available whenever a facilitator is configured.',
+    action: 'demoActivated',
   },
   {
     title: 'THE TACTICAL COMMAND CENTRE',
     subtitle: 'Pitch, squad controls, AI consultant and budget in one view',
     narration: 'This is the main command centre. The left rail switches between lineup, substitutions, matchday, analytics, Tactical Lab, finance, Tournament Headquarters and the Action Ledger. The centre is an interactive formation-aware pitch. On the right, WCAI AI holds the football conversation and returns structured actions only when the manager explicitly asks for one.',
     action: 'dashboard',
-  },
-  {
-    title: 'x402 ACCESS AND MEMBERSHIP',
-    subtitle: 'AI, analytics and finance are protected server-side',
-    narration: 'The access console explains exactly what each tier unlocks. Pro Membership enables Gemini chat, unlimited Deep Tactical Analytics, MCP lineup and transfer actions, and CCTP finance. A smaller x402 Match Pass unlocks time-limited AI and analysis. Outside this named demo account, the browser signs an EIP three thousand and nine authorization and access changes only after facilitator verification and settlement.',
-    action: 'access',
   },
   {
     title: 'FORMATION-AWARE PITCH',
@@ -83,15 +98,33 @@ const segments = [
   },
   {
     title: 'STRUCTURED AI LINEUP PROPOSAL',
-    subtitle: 'Exact formation, player IDs, budget and explicit approval',
-    narration: 'Now I explicitly request a three five two featuring Lionel Messi and Lamine Yamal. The Agent Skills layer searches the actual catalog, validates position counts and budget, and returns a structured proposal containing the exact formation and eleven stable player identifiers. The proposal card is separate from Gemini prose, so the screen and the saved squad cannot disagree. I will apply it to demonstrate the MCP-backed action.',
+    subtitle: 'Exact formation, player IDs, budget and explicit user consent',
+    narration: 'Now I explicitly request a three five two featuring Lionel Messi and Lamine Yamal. The Agent Skills layer searches the actual catalog, validates position counts and budget, and returns a structured proposal containing the exact formation and eleven stable player identifiers. The proposal card is separate from Gemini prose, so the screen and the saved squad cannot disagree. Crucially, the squad is still unchanged until the manager presses Apply Lineup.',
     action: 'lineup',
   },
   {
+    title: 'APPLY LINEUP — EXPLICIT CONSENT',
+    subtitle: 'The manager approves the exact proposed eleven',
+    narration: 'I now press Apply Lineup. This is the consent boundary: WCAI does not treat a model recommendation as an instruction. Only the manager approval submits the proposed formation and player identifiers to the backend for a second validation and MCP execution.',
+    action: 'applyLineup',
+  },
+  {
     title: 'MCP ACTION RECEIPT',
-    subtitle: 'The approved eleven is persisted through a constrained tool',
-    narration: 'After approval, the backend validates the same eleven again and calls the standalone Model Context Protocol server. MCP tools can apply a lineup, execute one transfer, read the squad, set a formation and fetch player details. The UI updates only after confirmation and displays an auditable MCP receipt. Repeated requests use idempotency keys, preventing an accidental duplicate mutation.',
+    subtitle: 'The approved eleven is visibly persisted through a constrained tool',
+    narration: 'After approval, the backend validates the same eleven again and calls the standalone Model Context Protocol server. The pitch now reflects the approved eleven, and the chat displays an auditable MCP receipt. MCP tools can apply a lineup, execute one transfer, read the squad, set a formation and fetch player details. Repeated requests use idempotency keys, preventing an accidental duplicate mutation.',
     action: 'mcpResult',
+  },
+  {
+    title: 'ONE-PLAYER AI CHANGE PROPOSAL',
+    subtitle: 'A direct replacement — never an unwanted squad rebuild',
+    narration: 'Next I ask for a direct replacement for Lamine Yamal and explicitly prohibit a squad rebuild. WCAI produces one same-position, budget-valid Substitution Proposal: one player out and one player in. The rest of the approved eleven remains untouched, and the manager can still reject the recommendation.',
+    action: 'singleTransferProposal',
+  },
+  {
+    title: 'CONFIRM CHANGE — MCP TRANSFER',
+    subtitle: 'The approved replacement is applied and shown on screen',
+    narration: 'I press Confirm Change to approve this one-player recommendation. The backend first persists the current squad context, then MCP validates and executes only the specified sell and buy pair. The confirmation message names the outgoing and incoming player, and the updated pitch reflects that exact replacement.',
+    action: 'confirmTransfer',
   },
   {
     title: 'DEEP TACTICAL ANALYTICS',
@@ -174,7 +207,7 @@ function synthesizeNarration() {
 }
 
 function buildNarrationTrack(timedSegments) {
-  const track = join(generated, 'narration.m4a');
+  const track = join(releaseDir, 'narration.m4a');
   const args = ['-y'];
   timedSegments.forEach((segment) => args.push('-i', segment.audioPath));
   const filters = timedSegments.map((segment, index) =>
@@ -234,6 +267,21 @@ async function providerCount(page) {
   return page.locator('div').filter({ hasText: /^(GEMINI LIVE|STATIC FALLBACK)$/ }).count();
 }
 
+async function createFreshDemoAccount() {
+  const response = await fetch('http://localhost:8000/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username,
+      email: `${username}@wcai-demo.local`,
+      password,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Fresh demo account registration failed (${response.status}). Use a unique WCAI_DEMO_USERNAME for every video render.`);
+  }
+}
+
 function sidebarButton(page, label) {
   return page.locator('button').filter({ hasText: new RegExp(label, 'i') }).first();
 }
@@ -249,7 +297,7 @@ async function perform(page, action) {
       await page.waitForTimeout(1800);
       await page.getByRole('button', { name: 'Sign in' }).click();
       await page.getByRole('button', { name: 'Forgot password?' }).click();
-      await highlight(page.getByRole('button', { name: 'VERIFY SECURITY QUESTION' }));
+      await highlight(page.getByRole('button', { name: 'CONTINUE TO RECOVERY' }));
       await page.waitForTimeout(1800);
       await page.getByRole('button', { name: 'Cancel and return to sign in' }).click();
       return;
@@ -265,11 +313,24 @@ async function perform(page, action) {
     case 'dashboard':
       await highlight(page.getByText('INJ CONTROL', { exact: true }));
       return;
-    case 'access':
-      await page.getByRole('button', { name: /DEMO PRO|PRO MEMBER|MEMBERSHIP LOCKED/i }).click();
+    case 'lockedAccess':
+      await page.getByRole('button', { name: /MEMBERSHIP LOCKED/i }).click();
       await page.getByText('AI, Analytics & Injective Finance', { exact: true }).waitFor();
-      await highlight(page.getByText('x402 Match Pass', { exact: true }));
-      await page.waitForTimeout(2200);
+      await highlight(page.getByText('Hackathon judge checkout', { exact: true }));
+      return;
+    case 'demoCheckout':
+      await page.getByRole('button', { name: 'Activate 30-min Demo Pro', exact: true }).waitFor();
+      await highlight(page.getByRole('button', { name: 'Activate 30-min Demo Pro', exact: true }));
+      await page.waitForTimeout(1800);
+      await page.getByRole('button', { name: 'Activate 30-min Demo Pro', exact: true }).click();
+      await page.getByText('AI, Analytics & Injective Finance', { exact: true }).waitFor({ state: 'hidden', timeout: 30000 });
+      await page.locator('nav').getByText('Hackathon Demo Pro', { exact: true }).waitFor({ timeout: 30000 });
+      return;
+    case 'demoActivated':
+      await page.locator('nav').getByText('Hackathon Demo Pro', { exact: true }).click();
+      await page.getByText(/^Hackathon Demo Pro active/).waitFor({ timeout: 15000 });
+      await highlight(page.getByText(/^Hackathon Demo Pro active/));
+      await page.waitForTimeout(2400);
       await page.getByRole('button', { name: 'Close membership dialog' }).click({ position: { x: 8, y: 8 } });
       return;
     case 'formation':
@@ -286,12 +347,13 @@ async function perform(page, action) {
       await page.getByPlaceholder('Search by name or team...').fill('Yamal');
       await page.getByLabel('Filter players by national team').selectOption({ label: 'Spain' }).catch(() => {});
       await highlight(page.getByText(/Lamine Yamal/i).first());
-      await page.waitForTimeout(2600);
-      await page.locator('div.fixed.inset-0.z-50 > div.absolute.inset-0').first().click({ position: { x: 8, y: 8 } });
+      await page.waitForTimeout(1600);
+      await page.getByRole('button', { name: /Lamine Yamal/i }).click();
+      await page.getByText('SELECT FW', { exact: true }).waitFor({ state: 'hidden', timeout: 15000 });
       return;
     }
     case 'playerIntel': {
-      const intelButton = page.locator('button').filter({ hasText: 'OPEN INTEL' }).first();
+      const intelButton = page.getByRole('button', { name: /Open Intel/i }).first();
       await intelButton.click();
       const modalTitle = page.getByText(/Player Intel \/\//i).first();
       await modalTitle.waitFor({ timeout: 30000 });
@@ -328,17 +390,39 @@ async function perform(page, action) {
       await waitForAgent(page, before);
       await page.getByText('AI Lineup Proposal', { exact: true }).waitFor({ timeout: 65000 });
       await highlight(page.getByText('AI Lineup Proposal', { exact: true }));
-      await page.waitForTimeout(2800);
-      const apply = page.getByRole('button', { name: 'APPLY LINEUP', exact: true });
-      if (await apply.isVisible()) {
-        await apply.click();
-        await page.getByText(/AI lineup applied/i).last().waitFor({ timeout: 45000 });
-      }
+      return;
+    }
+    case 'applyLineup': {
+      const apply = page.getByRole('button', { name: /APPLY LINEUP/i });
+      await apply.waitFor({ timeout: 30000 });
+      await highlight(apply);
+      await page.waitForTimeout(1600);
+      await apply.click();
+      await page.getByText(/AI lineup applied/i).last().waitFor({ timeout: 45000 });
       return;
     }
     case 'mcpResult':
       await highlight(page.getByText(/MCP receipt:/i).last());
       return;
+    case 'singleTransferProposal': {
+      const before = await providerCount(page);
+      await input().fill('Replace Lamine Yamal with one budget-valid forward. Return only a direct one-player replacement proposal and do not rebuild or change the rest of my lineup until I confirm.');
+      await input().press('Enter');
+      await waitForAgent(page, before);
+      await page.getByText('Substitution Proposal', { exact: true }).waitFor({ timeout: 65000 });
+      await highlight(page.getByText('Substitution Proposal', { exact: true }));
+      return;
+    }
+    case 'confirmTransfer': {
+      const confirm = page.getByRole('button', { name: /CONFIRM CHANGE/i });
+      await confirm.waitFor({ timeout: 30000 });
+      await highlight(confirm);
+      await page.waitForTimeout(1600);
+      await confirm.click();
+      await page.getByText(/MCP Transfer confirmed/i).last().waitFor({ timeout: 45000 });
+      await highlight(page.getByText(/MCP Transfer confirmed/i).last());
+      return;
+    }
     case 'analytics': {
       const before = await providerCount(page);
       await sidebarButton(page, 'ANALYTICS').click();
@@ -391,11 +475,11 @@ async function perform(page, action) {
       await page.goto('http://localhost:3000/transactions', { waitUntil: 'domcontentloaded' });
       await page.getByText('Manager Ledger', { exact: true }).waitFor({ timeout: 30000 });
       await installVideoChrome(page);
-      await page.getByRole('button', { name: 'tactical', exact: true }).click();
-      await page.waitForTimeout(1500);
+      await page.getByRole('button', { name: 'access', exact: true }).click();
+      await page.getByText('Hackathon Demo · 0 USDC', { exact: true }).waitFor({ timeout: 30000 });
       const receipt = page.locator('article button').first();
       if (await receipt.count()) await receipt.click();
-      await highlight(page.getByText('Action history', { exact: true }));
+      await highlight(page.getByText('Hackathon Demo · 0 USDC', { exact: true }));
       return;
     case 'execute':
       await page.goto('http://localhost:3000', { waitUntil: 'domcontentloaded' });
@@ -441,7 +525,7 @@ async function record(timedSegments) {
       await perform(page, segment.action);
     } catch (error) {
       console.warn(`Segment ${index + 1} (${segment.action}) continued after an optional UI step failed:`, error.message);
-      const requiredActions = new Set(['login', 'access', 'playerIntel', 'conversation', 'lineup', 'mcpResult', 'analytics', 'matchday', 'tacticalLab', 'tournament', 'squadIntel', 'ledger', 'execute']);
+      const requiredActions = new Set(['login', 'lockedAccess', 'demoCheckout', 'demoActivated', 'playerIntel', 'conversation', 'lineup', 'applyLineup', 'mcpResult', 'singleTransferProposal', 'confirmTransfer', 'analytics', 'matchday', 'tacticalLab', 'tournament', 'squadIntel', 'ledger', 'execute']);
       if (requiredActions.has(segment.action)) throw error;
     }
     if (segment.action === 'intro') await page.waitForTimeout(500);
@@ -469,11 +553,13 @@ function renderFinal(rawVideo, narrationTrack) {
 }
 
 mkdirSync(generated, { recursive: true });
+mkdirSync(releaseDir, { recursive: true });
 if (existsSync(rawDir)) rmSync(rawDir, { recursive: true, force: true });
 for (const url of ['http://localhost:8000/health', 'http://localhost:3000', 'http://localhost:3000/tournament', 'http://localhost:3000/transactions']) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Demo preflight failed: ${url} returned ${response.status}`);
 }
+await createFreshDemoAccount();
 const timedSegments = synthesizeNarration();
 const narrationTrack = buildNarrationTrack(timedSegments);
 const rawVideo = await record(timedSegments);

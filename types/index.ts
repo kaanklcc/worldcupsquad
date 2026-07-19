@@ -109,7 +109,6 @@ export interface AgentResponse {
 
 export interface AccessStatus {
   username: string;
-  isDemoAccount: boolean;
   demoAccessAvailable: boolean;
   demoDurationMinutes: number;
   membershipTier: 'free' | 'pro' | 'demo_pro';

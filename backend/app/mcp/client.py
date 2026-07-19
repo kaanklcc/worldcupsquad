@@ -5,10 +5,14 @@ Used by the transfers router to execute transfers via MCP.
 from typing import Dict, Any, Optional
 import json
 import sys
+import logging
 from pathlib import Path
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+
+logger = logging.getLogger(__name__)
 
 
 class MCPClient:
@@ -65,7 +69,8 @@ class MCPClient:
 
             return {"success": False, "error": "MCP server returned no JSON content"}
         except Exception as exc:
-            return {"success": False, "error": f"MCP stdio call failed: {exc}"}
+            logger.warning("MCP stdio call failed: %s", type(exc).__name__)
+            return {"success": False, "error": "MCP tool transport failed"}
 
     async def _simulate_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """

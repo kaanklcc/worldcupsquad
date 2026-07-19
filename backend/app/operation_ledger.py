@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+import re
 from typing import Any, Literal, Optional
 from uuid import uuid4
 
@@ -43,6 +44,7 @@ def serialize_operation(row) -> dict[str, Any]:
         "operationId": row["operation_id"],
         "idempotencyKey": row["idempotency_key"],
         "actionType": row["action_type"],
+        "requestHash": row["request_hash"],
         "status": row["status"],
         "provider": row["provider"],
         "network": row["network"],
@@ -70,7 +72,7 @@ def begin_operation(
     directly, and must never call an external provider for a processing replay.
     """
     key = (idempotency_key or f"server-{uuid4()}").strip()
-    if not key or len(key) > 160:
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{8,160}", key):
         raise HTTPException(status_code=400, detail="Invalid Idempotency-Key")
     digest = request_hash(payload)
     conn = get_db_connection()

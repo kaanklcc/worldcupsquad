@@ -1,9 +1,11 @@
 import sqlite3
 import os
+import logging
 from pathlib import Path
 
 DB_DIR = Path(__file__).parent.parent / "data"
 DB_FILE = DB_DIR / "auth.db"
+logger = logging.getLogger(__name__)
 
 def seed_players(conn):
     """Synchronize the SQLite player cache with the current roster catalog."""
@@ -46,12 +48,15 @@ def seed_players(conn):
             )
         )
     conn.commit()
-    print("Database: synchronized FIFA World Cup 2026 roster catalog.")
+    logger.info("Database synchronized with the World Cup 2026 roster catalog")
 
 def init_db():
     """Initialize the SQLite database and create users, players, and squads tables."""
     os.makedirs(DB_DIR, exist_ok=True)
     conn = sqlite3.connect(str(DB_FILE))
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     cursor = conn.cursor()
     
     # 1. Create users table
@@ -64,7 +69,9 @@ def init_db():
         security_question TEXT NOT NULL,
         security_answer_hash TEXT NOT NULL,
         budget REAL DEFAULT 100.0,
-        cctp_used INTEGER DEFAULT 0
+        cctp_used INTEGER DEFAULT 0,
+        token_version INTEGER NOT NULL DEFAULT 0,
+        recovery_code_hash TEXT
     )
     """)
     
@@ -88,11 +95,15 @@ def init_db():
         "ALTER TABLE users ADD COLUMN membership_expires_at TEXT",
         "ALTER TABLE users ADD COLUMN access_pass_expires_at TEXT",
         "ALTER TABLE users ADD COLUMN wallet_address TEXT",
+        "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN recovery_code_hash TEXT",
     ):
         try:
             cursor.execute(statement)
         except sqlite3.OperationalError:
             pass
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci ON users(LOWER(username))")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_ci ON users(LOWER(email))")
         
     # 2. Create players table
     cursor.execute("""
@@ -201,6 +212,22 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_operation_receipts_user_created
     ON operation_receipts(user_id, created_at DESC)
     """)
+
+    # One externally verified payment or bridge transaction can be consumed by
+    # one account only. This prevents a public-chain receipt from being replayed
+    # across newly registered WCAI accounts.
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS consumed_chain_receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        network TEXT NOT NULL,
+        tx_hash TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(provider, network, tx_hash),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """)
     
     conn.commit()
     
@@ -213,6 +240,8 @@ def get_db_connection():
     """Get a connection to the SQLite database."""
     conn = sqlite3.connect(str(DB_FILE))
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 # Automatically initialize database when db module is imported

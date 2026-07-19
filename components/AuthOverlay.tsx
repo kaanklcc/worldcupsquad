@@ -1,19 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { setCsrfToken } from '@/lib/api';
 
 interface AuthOverlayProps {
-  onLoginSuccess: (username: string, token: string) => void;
+  onLoginSuccess: (username: string) => void;
 }
 
 type AuthMode = 'login' | 'register' | 'forgot_step1' | 'forgot_step2';
-
-const SECURITY_QUESTIONS = [
-  "What was the name of your first pet?",
-  "Who was your favourite footballer growing up?",
-  "What city were you born in?",
-  "What was your first school teacher's surname?"
-];
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -26,8 +20,6 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [securityQuestion, setSecurityQuestion] = useState(SECURITY_QUESTIONS[0]);
-  const [securityAnswer, setSecurityAnswer] = useState('');
   
   // Forgot password specific fields
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
@@ -59,6 +51,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
     try {
       const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username_or_email: username,
@@ -71,7 +64,8 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         throw new Error(data.detail || 'Invalid sign-in details or account not found.');
       }
       
-      onLoginSuccess(data.username, data.token);
+      setCsrfToken(typeof data.csrfToken === 'string' ? data.csrfToken : null);
+      onLoginSuccess(data.username);
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err, 'Could not connect to the server.'));
     } finally {
@@ -82,7 +76,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     resetMessages();
-    if (!username || !email || !password || !securityAnswer) {
+    if (!username || !email || !password) {
       setErrorMsg('Please complete every field.');
       return;
     }
@@ -91,13 +85,12 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
     try {
       const res = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username,
           email,
-          password,
-          security_question: securityQuestion,
-          security_answer: securityAnswer
+          password
         })
       });
       const data = await res.json();
@@ -106,10 +99,9 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         throw new Error(data.detail || 'Registration failed.');
       }
       
-      setSuccessMsg('Manager account created. You can now sign in with your password.');
+      setSuccessMsg(`Manager account created. Save this recovery code now: ${data.recoveryCode}`);
       setMode('login');
       setPassword('');
-      setSecurityAnswer('');
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err, 'An error occurred while creating your account.'));
     } finally {
@@ -129,6 +121,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
     try {
       const res = await fetch(`${API_URL}/api/auth/forgot-password-question`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username_or_email: usernameOrEmail })
       });
@@ -138,7 +131,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         throw new Error(data.detail || 'Account not found.');
       }
       
-      setFetchedQuestion(data.security_question);
+      setFetchedQuestion(data.recovery_prompt);
       setMode('forgot_step2');
     } catch (err: unknown) {
       setErrorMsg(getErrorMessage(err, 'An error occurred.'));
@@ -159,10 +152,11 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
     try {
       const res = await fetch(`${API_URL}/api/auth/reset-password`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username_or_email: usernameOrEmail,
-          security_answer: resetAnswer,
+          recovery_code: resetAnswer,
           new_password: newPassword
         })
       });
@@ -172,7 +166,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         throw new Error(data.detail || 'Password reset failed.');
       }
       
-      setSuccessMsg('Your password was reset. You can now sign in with the new password.');
+      setSuccessMsg(`Password reset. Save your replacement recovery code: ${data.recoveryCode}`);
       setMode('login');
       setUsername(usernameOrEmail);
       setPassword('');
@@ -305,36 +299,12 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Min 6 karakter"
+                placeholder="Minimum 8 characters"
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
               <p className="text-[9px] text-slate-500 font-mono-jb mt-0.5 leading-normal">
-                * Password must contain at least 6 characters, one uppercase letter, one lowercase letter and one number.
+                * Password must contain at least 8 characters, one uppercase letter, one lowercase letter and one number.
               </p>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Security question (for recovery)</label>
-              <select
-                value={securityQuestion}
-                onChange={(e) => setSecurityQuestion(e.target.value)}
-                className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-300 outline-none transition-all"
-              >
-                {SECURITY_QUESTIONS.map((q) => (
-                  <option key={q} value={q} className="bg-slate-900">{q}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Security answer</label>
-              <input
-                type="text"
-                value={securityAnswer}
-                onChange={(e) => setSecurityAnswer(e.target.value)}
-                placeholder="Your answer"
-                className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
-              />
             </div>
 
             <button
@@ -373,7 +343,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
               disabled={loading}
               className="gold-gradient font-display-lg text-xs uppercase py-3 rounded-lg shadow-lg hover:brightness-110 transition-all font-bold text-slate-950 flex justify-center items-center gap-2 mt-2 cursor-pointer"
             >
-              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'VERIFY SECURITY QUESTION'}
+              {loading ? <span className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span> : 'CONTINUE TO RECOVERY'}
             </button>
 
             <button type="button" onClick={() => { setMode('login'); resetMessages(); }} className="text-center text-[10px] text-slate-400 hover:text-emerald-400 transition-colors font-mono-jb mt-2">
@@ -386,17 +356,17 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
         {mode === 'forgot_step2' && (
           <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
             <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-lg flex flex-col gap-1">
-              <div className="font-mono-jb text-[8px] text-slate-500 uppercase font-bold">Your security question:</div>
+              <div className="font-mono-jb text-[8px] text-slate-500 uppercase font-bold">Secure account recovery</div>
               <div className="text-sm font-bold text-slate-200">{fetchedQuestion}</div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">Security answer</label>
+              <label className="font-mono-jb text-[9px] text-slate-400 uppercase font-bold tracking-wider">One-time recovery code</label>
               <input
                 type="text"
                 value={resetAnswer}
                 onChange={(e) => setResetAnswer(e.target.value)}
-                placeholder="Your answer"
+                placeholder="WCAI-..."
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
             </div>
@@ -407,7 +377,7 @@ export default function AuthOverlay({ onLoginSuccess }: AuthOverlayProps) {
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Min 6 karakter"
+                placeholder="Minimum 8 characters"
                 className="bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-0 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
               />
             </div>

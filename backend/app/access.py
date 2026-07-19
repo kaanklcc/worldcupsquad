@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import re
+import sqlite3
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -17,11 +18,12 @@ from .config import settings
 from .db import get_db_connection
 
 
-DEMO_USERNAME = "kaan"
 MEMBERSHIP_PRICE_USDC = 4.99
 SINGLE_ACCESS_PRICE_USDC = 0.05
 MEMBERSHIP_DAYS = 30
 SINGLE_ACCESS_MINUTES = 15
+# ``kaan_demo`` is retained only so pre-hardening database rows without an
+# expiry are treated as expired. It no longer grants username-based access.
 DEMO_SOURCES = {"kaan_demo", "hackathon_demo_pro", "hackathon_demo_match_pass"}
 
 LOCKED_CAPABILITIES_MESSAGE = """🔒 **WCAI access is locked**
@@ -112,14 +114,10 @@ def get_access_status(user_id: int) -> Dict[str, Any]:
     )
 
     demo_duration = max(5, min(int(settings.hackathon_demo_minutes), 120))
-    demo_available = bool(
-        settings.x402_demo_mode
-        and (settings.x402_allow_simulated_purchases or row["username"].strip().lower() == DEMO_USERNAME)
-    )
+    demo_available = bool(settings.x402_demo_mode and settings.x402_allow_simulated_purchases)
 
     return {
         "username": row["username"],
-        "isDemoAccount": row["username"].strip().lower() == DEMO_USERNAME,
         "demoAccessAvailable": demo_available,
         "demoDurationMinutes": demo_duration,
         "membershipTier": row["membership_tier"] if membership_active else "free",
@@ -172,10 +170,7 @@ def grant_demo_access(user_id: int, mode: str) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Unsupported access mode")
 
     row = _load_user(user_id)
-    is_legacy_judge = row["username"].strip().lower() == DEMO_USERNAME
-    demo_available = settings.x402_demo_mode and (
-        settings.x402_allow_simulated_purchases or is_legacy_judge
-    )
+    demo_available = settings.x402_demo_mode and settings.x402_allow_simulated_purchases
     if not demo_available:
         raise HTTPException(status_code=403, detail="Hackathon Demo checkout is not enabled")
 
@@ -249,6 +244,14 @@ def grant_paid_access(
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        if not simulated:
+            cursor.execute(
+                """
+                INSERT INTO consumed_chain_receipts (provider, network, tx_hash, user_id)
+                VALUES ('x402', ?, ?, ?)
+                """,
+                (settings.x402_network, receipt.lower(), user_id),
+            )
         if mode == "membership":
             expires_at = _to_iso(now + timedelta(days=MEMBERSHIP_DAYS))
             cursor.execute(
@@ -287,6 +290,9 @@ def grant_paid_access(
             simulated=simulated,
         )
         conn.commit()
+    except sqlite3.IntegrityError as error:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail="This x402 settlement receipt has already been consumed.") from error
     except Exception:
         conn.rollback()
         raise

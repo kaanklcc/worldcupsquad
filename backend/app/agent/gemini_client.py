@@ -4,6 +4,7 @@ Includes fallback to rule-based logic when no API key is configured.
 """
 import json
 import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -16,6 +17,9 @@ from . import skills
 from .prompts import SYSTEM_PROMPT
 
 
+logger = logging.getLogger(__name__)
+
+
 class GeminiAgentClient:
     """Gemini LLM client with tool-calling for the WCAI agent."""
 
@@ -26,7 +30,7 @@ class GeminiAgentClient:
         if settings.gemini_api_key:
             self.client = genai.Client(api_key=settings.gemini_api_key)
         else:
-            print("Warning: GEMINI_API_KEY not configured. Falling back to rule-based logic.")
+            logger.warning("GEMINI_API_KEY is not configured; rule-based fallback is active")
 
     def is_available(self) -> bool:
         """Check if the Gemini client is properly configured."""
@@ -196,7 +200,7 @@ class GeminiAgentClient:
                         ),
                     )
                     if model != self.model:
-                        print(f"Gemini model failover succeeded with {model}")
+                        logger.info("Gemini model failover succeeded with %s", model)
                     return response
                 except Exception as error:
                     last_error = error
@@ -298,7 +302,7 @@ class GeminiAgentClient:
             )
 
         except Exception as e:
-            print(f"Gemini API error: {e}")
+            logger.warning("Gemini request failed: %s", type(e).__name__)
             err_str = str(e)
             warning = "⚠️ Gemini API connection failed. WCAI has temporarily switched to rule-based mode."
             if "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower() or "429" in err_str:

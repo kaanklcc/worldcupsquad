@@ -8,11 +8,15 @@ status, and verifies both confirmed chain transactions before budget changes.
 from __future__ import annotations
 
 from typing import Any
+import logging
 
 import httpx
 from fastapi import HTTPException
 
 from .config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 IRIS_SANDBOX_URL = "https://iris-api-sandbox.circle.com"
@@ -62,7 +66,8 @@ async def get_attestation(burn_tx_hash: str) -> dict[str, Any]:
             response.raise_for_status()
             data = response.json()
     except httpx.HTTPError as error:
-        raise HTTPException(status_code=502, detail=f"Circle Iris attestation request failed: {error}") from error
+        logger.warning("Circle Iris attestation request failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="Circle Iris attestation service is temporarily unavailable") from error
 
     messages = data.get("messages") or []
     message = messages[0] if messages else {}
@@ -84,9 +89,10 @@ async def _rpc(url: str, method: str, params: list[Any]) -> Any:
             response.raise_for_status()
             body = response.json()
     except httpx.HTTPError as error:
-        raise HTTPException(status_code=502, detail=f"CCTP chain verification failed: {error}") from error
+        logger.warning("CCTP RPC request failed: %s", type(error).__name__)
+        raise HTTPException(status_code=502, detail="CCTP chain verification service is temporarily unavailable") from error
     if body.get("error"):
-        raise HTTPException(status_code=502, detail=f"CCTP chain verification failed: {body['error'].get('message', 'RPC error')}")
+        raise HTTPException(status_code=502, detail="CCTP chain verification service rejected the request")
     return body.get("result")
 
 
@@ -105,6 +111,28 @@ def _decode_address_word(input_data: str, index: int) -> str:
     if len(word) != 64:
         raise HTTPException(status_code=422, detail="CCTP burn calldata is incomplete")
     return f"0x{word[-40:]}".lower()
+
+
+def _decode_dynamic_bytes(input_data: str, index: int, *, max_bytes: int = 262_144) -> str:
+    """Decode one ABI dynamic-bytes argument from transaction calldata."""
+    if not input_data.startswith("0x"):
+        raise HTTPException(status_code=422, detail="CCTP mint calldata is malformed")
+    try:
+        offset = _decode_word(input_data, index)
+        length_start = 10 + (offset * 2)
+        length_word = input_data[length_start:length_start + 64]
+        if len(length_word) != 64:
+            raise ValueError("missing dynamic length")
+        length = int(length_word, 16)
+        if length < 1 or length > max_bytes:
+            raise ValueError("dynamic value outside limits")
+        data_start = length_start + 64
+        data = input_data[data_start:data_start + (length * 2)]
+        if len(data) != length * 2:
+            raise ValueError("truncated dynamic value")
+        return f"0x{data}".lower()
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail="CCTP mint calldata is malformed") from error
 
 
 async def _confirmed_transaction(rpc_url: str, tx_hash: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -150,6 +178,15 @@ async def verify_cctp_receipts(*, wallet_address: str, amount_usdc: int, burn_tx
         raise HTTPException(status_code=422, detail="CCTP mint transaction targets an unexpected contract")
     if not str(mint_tx.get("input") or "").startswith(MINT_SELECTOR):
         raise HTTPException(status_code=422, detail="CCTP mint transaction does not call receiveMessage")
+
+    # Link the destination mint to this exact source burn. Merely supplying any
+    # successful historical burn and any unrelated mint must not earn credit.
+    attestation = await get_attestation(burn_tx_hash)
+    if attestation.get("status") != "complete" or not attestation.get("message"):
+        raise HTTPException(status_code=422, detail="Circle has not completed attestation for this burn transaction")
+    minted_message = _decode_dynamic_bytes(str(mint_tx.get("input") or ""), 0)
+    if minted_message != str(attestation["message"]).lower():
+        raise HTTPException(status_code=422, detail="CCTP mint is not linked to the supplied burn transaction")
 
     return {
         "burnTxHash": burn_tx_hash,

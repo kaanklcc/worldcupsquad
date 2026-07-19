@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import Optional
 
 from ..agent.skills import suggest_lineup
@@ -12,19 +12,22 @@ from ..models import Formation
 from ..db import get_db_connection
 from ..tournament_data import get_tournament_overview
 from .squads import get_current_user_id
+from ..security import rate_limit
 
 router = APIRouter(prefix="/api/worldcup", tags=["worldcup"])
 
 
 @router.get("/snapshot")
-async def world_cup_snapshot(topic: str = ""):
+async def world_cup_snapshot(topic: str = Query(default="", max_length=120)):
     """Return the dated FIFA 48-team roster snapshot and fixture scope."""
     return get_world_cup_snapshot(topic)
 
 
 @router.get("/tournament")
-async def tournament_overview(refresh: bool = False):
+async def tournament_overview(request: Request, refresh: bool = False):
     """Return bracket, fixtures, groups and locally sourced squad details."""
+    if refresh:
+        rate_limit(request, "tournament-refresh", limit=10, window_seconds=60)
     return await get_tournament_overview(force_refresh=refresh)
 
 
@@ -36,11 +39,13 @@ def _contribution_score(player) -> float:
 
 @router.get("/matchday-brief")
 async def matchday_brief(
+    request: Request,
     formation: Formation = "4-3-3",
-    match_id: Optional[str] = None,
+    match_id: Optional[str] = Query(default=None, max_length=120),
     user_id: int = Depends(get_current_user_id),
 ):
     """Build a current source-aware briefing from the live fixture feed."""
+    rate_limit(request, "matchday-brief", subject=str(user_id), limit=10, window_seconds=60)
     live_stats = await get_live_player_totals()
     apply_live_player_totals(live_stats)
     overview = await get_tournament_overview(force_refresh=True)

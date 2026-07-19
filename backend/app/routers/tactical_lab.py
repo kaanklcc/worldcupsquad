@@ -2,7 +2,7 @@
 
 from typing import List, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..access import require_ai_access
@@ -11,6 +11,7 @@ from ..data import get_world_cup_snapshot
 from ..db import get_db_connection
 from ..models import Formation
 from .squads import get_current_user_id
+from ..security import rate_limit
 
 
 router = APIRouter(prefix="/api/tactical-lab", tags=["tactical-lab"])
@@ -27,22 +28,24 @@ class TacticalLabRequest(BaseModel):
 
 @router.post("/compare")
 async def compare_formations(
-    request: TacticalLabRequest,
+    body: TacticalLabRequest,
+    request: Request,
     user_id: int = Depends(get_current_user_id),
 ):
     """Return a side-by-side budget-valid comparison without mutating the squad."""
     access = require_ai_access(user_id)
+    rate_limit(request, "tactical-lab", subject=str(user_id), limit=15, window_seconds=60)
     conn = get_db_connection()
     row = conn.execute("SELECT budget FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
     max_budget = float(row["budget"])
-    current_squad = analyze_squad(request.squadPlayerIds)
+    current_squad = analyze_squad(body.squadPlayerIds)
     baseline = None
     if "error" not in current_squad:
         baseline = {
-            "playerCount": len(request.squadPlayerIds),
+            "playerCount": len(body.squadPlayerIds),
             "totalPoints": current_squad["total_points"],
             "budgetUsed": current_squad["total_budget"],
             "positionBreakdown": current_squad["position_breakdown"],
@@ -52,10 +55,10 @@ async def compare_formations(
     for formation in SUPPORTED_FORMATIONS:
         result = suggest_lineup(
             formation,
-            match_context=request.matchContext,
-            required_player_ids=request.requiredPlayerIds,
-            strategy=request.strategy,
-            current_squad_player_ids=request.squadPlayerIds,
+            match_context=body.matchContext,
+            required_player_ids=body.requiredPlayerIds,
+            strategy=body.strategy,
+            current_squad_player_ids=body.squadPlayerIds,
             max_budget=max_budget,
         )
         if result.get("error"):
@@ -89,8 +92,8 @@ async def compare_formations(
     return {
         "success": True,
         "feature": "what_if_tactical_lab",
-        "selectedFormation": request.formation,
-        "strategy": request.strategy,
+        "selectedFormation": body.formation,
+        "strategy": body.strategy,
         "serverBudget": max_budget,
         "baseline": baseline,
         "recommended": best,

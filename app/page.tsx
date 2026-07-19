@@ -13,7 +13,7 @@ import AccessModal from '@/components/AccessModal';
 import TacticalLabPanel from '@/components/TacticalLabPanel';
 import PlayerIntelModal from '@/components/PlayerIntelModal';
 import CctpBridgeModal from '@/components/CctpBridgeModal';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, setCsrfToken } from '@/lib/api';
 import { payWithX402 } from '@/lib/x402';
 
 type SelectedSlot = SquadSlot & { isBench: boolean };
@@ -115,12 +115,15 @@ export default function HomePage() {
   const [syncError, setSyncError] = useState<string | undefined>();
 
   // Fetch squad lineup from SQLite database
-  const fetchSquadLineup = useCallback((token: string) => {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    fetch(`${API_URL}/api/squad/load`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then((res) => res.json())
+  const fetchSquadLineup = useCallback(() => {
+    apiFetch<{
+      success: boolean;
+      budget: number;
+      cctpUsed: boolean;
+      formation: string;
+      squad: SquadSlot[];
+      bench: SquadSlot[];
+    }>('/api/squad/load')
       .then((data) => {
         if (data.success) {
           setBudget(data.budget);
@@ -181,36 +184,17 @@ export default function HomePage() {
       .then((data: Player[]) => setPlayers(data))
       .catch(console.error);
 
-    // 2. Validate session token
-    const token = localStorage.getItem('token');
-    const username = localStorage.getItem('username');
-    if (token && username) {
-      fetch(`${API_URL}/api/auth/me`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+    // 2. Validate the server-side HttpOnly session cookie. The UI never treats
+    // stale browser storage or an offline backend as an authenticated session.
+    apiFetch<{ authenticated: boolean; username: string; csrfToken?: string }>('/api/auth/me')
+      .then((session) => {
+        setCsrfToken(session.csrfToken ?? null);
+        setCurrentUser(session.username);
+        fetchSquadLineup();
+        fetchAccessStatus();
       })
-        .then(res => {
-          if (res.ok) {
-            setCurrentUser(username);
-            fetchSquadLineup(token);
-            fetchAccessStatus();
-          } else {
-            localStorage.removeItem('token');
-            localStorage.removeItem('username');
-          }
-        })
-        .catch(() => {
-          // If server is offline but we have stored credentials, let them in local mode
-          setCurrentUser(username);
-        })
-        .finally(() => {
-          setAuthLoading(false);
-        });
-    } else {
-      // Defer the browser-only auth state transition until after the effect
-      // has subscribed to the storage/network checks above.
-      const timer = window.setTimeout(() => setAuthLoading(false), 0);
-      return () => window.clearTimeout(timer);
-    }
+      .catch(() => setCurrentUser(null))
+      .finally(() => setAuthLoading(false));
   }, [fetchAccessStatus, fetchSquadLineup]);
 
   // Revalidate short-lived judge access while the dashboard remains open so
@@ -580,7 +564,7 @@ export default function HomePage() {
           {
             id: `msg-finance-locked-${Date.now()}`,
             role: 'assistant',
-            content: '🔒 **Finance & Wallet access is locked**\n\nInjective wallet management and CCTP USDC backing require an active Pro membership. The Kaan demo account can activate membership at no charge.',
+            content: '🔒 **Finance & Wallet access is locked**\n\nInjective wallet management and CCTP USDC backing require an active Pro membership. When Hackathon Demo checkout is enabled, any signed-in reviewer can explicitly activate a time-limited simulated membership without being charged.',
             provider: 'locked',
           },
         ]);
@@ -685,7 +669,7 @@ export default function HomePage() {
     setSyncTxHash(undefined);
     setSyncError(undefined);
 
-    if (!localStorage.getItem('token')) {
+    if (!currentUser) {
       setSyncStage('error');
       setSyncError('No active session was found. Please sign in again.');
       return;
@@ -700,24 +684,25 @@ export default function HomePage() {
       setSyncStage('error');
       setSyncError(err instanceof Error ? err.message : 'Your squad could not be saved.');
     }
-  }, [saveSquadSnapshot]);
+  }, [currentUser, saveSquadSnapshot]);
 
   // Authentication Callbacks
-  const handleLoginSuccess = useCallback((username: string, token: string) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('username', username);
+  const handleLoginSuccess = useCallback((username: string) => {
     setCurrentUser(username);
-    fetchSquadLineup(token);
+    fetchSquadLineup();
     fetchAccessStatus();
   }, [fetchAccessStatus, fetchSquadLineup]);
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('username');
-    setCurrentUser(null);
-    setAccessStatus(null);
-    setMessages([]);
-    setPendingAction(null);
+    apiFetch<{ success: boolean }>('/api/auth/logout', { method: 'POST' })
+      .catch(() => undefined)
+      .finally(() => {
+        setCsrfToken(null);
+        setCurrentUser(null);
+        setAccessStatus(null);
+        setMessages([]);
+        setPendingAction(null);
+      });
   }, []);
 
   // Approve MCP action. Save first so the server validates the same snapshot

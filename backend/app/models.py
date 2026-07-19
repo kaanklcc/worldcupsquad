@@ -1,10 +1,12 @@
 """
 Pydantic models matching the frontend types/index.ts.
 """
-from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated, List, Optional, Literal
 
 Formation = Literal['4-3-3', '4-4-2', '3-5-2', '4-2-3-1', '5-3-2']
+PlayerId = Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")]
+EvmAddress = Annotated[str, Field(pattern=r"^0x[a-fA-F0-9]{40}$")]
 
 
 class PremiumStats(BaseModel):
@@ -32,6 +34,8 @@ class WorldCupStats(BaseModel):
 
 
 class Player(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     name: str
     position: Literal['GK', 'DF', 'MF', 'FW']
@@ -52,13 +56,9 @@ class Player(BaseModel):
     availability_status: Optional[Literal['available', 'doubtful', 'injured', 'suspended', 'unknown']] = None
     world_cup_stats: Optional[WorldCupStats] = None
 
-    class Config:
-        populate_by_name = True
-
-
 class SquadSlot(BaseModel):
     position: Literal['GK', 'DF', 'MF', 'FW']
-    slotIndex: int
+    slotIndex: int = Field(..., ge=0, le=30)
     player: Optional[Player] = None
 
 
@@ -89,9 +89,9 @@ class AgentResponse(BaseModel):
 
 
 class AgentRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(..., min_length=1, max_length=2000)
     hasPaidX402: bool = False
-    squadPlayerIds: List[str] = Field(default_factory=list, max_length=19)
+    squadPlayerIds: List[PlayerId] = Field(default_factory=list, max_length=19)
     formation: Formation = '4-3-3'
     analysisMode: bool = False
 
@@ -106,9 +106,9 @@ class ChatMessage(BaseModel):
 
 
 class CCTPIntentRequest(BaseModel):
-    walletAddress: str
-    amount: int = 20
-    sourceChain: str = 'Ethereum'
+    walletAddress: EvmAddress
+    amount: Literal[20] = 20
+    sourceChain: Literal['Ethereum', 'Sepolia', 'Ethereum Sepolia'] = 'Ethereum Sepolia'
 
 
 class CCTPAttestationRequest(BaseModel):
@@ -116,9 +116,9 @@ class CCTPAttestationRequest(BaseModel):
 
 
 class CCTPConfirmRequest(BaseModel):
-    operationId: str = Field(..., min_length=8, max_length=100)
-    walletAddress: str
-    amount: int = 20
+    operationId: str = Field(..., pattern=r"^op_[a-f0-9]{32}$")
+    walletAddress: EvmAddress
+    amount: Literal[20] = 20
     burnTxHash: str = Field(..., pattern=r"^0x[a-fA-F0-9]{64}$")
     mintTxHash: str = Field(..., pattern=r"^0x[a-fA-F0-9]{64}$")
 
@@ -135,10 +135,10 @@ class CCTPResponse(BaseModel):
 
 
 class TransferExecuteRequest(BaseModel):
-    sellPlayerId: str
-    buyPlayerId: str
+    sellPlayerId: PlayerId
+    buyPlayerId: PlayerId
     reasoning: str = Field(..., min_length=1, max_length=1000)
-    squadPlayerIds: List[str] = Field(..., min_length=1, max_length=19)
+    squadPlayerIds: List[PlayerId] = Field(..., min_length=1, max_length=19)
 
 
 class TransferExecuteResponse(BaseModel):
@@ -152,8 +152,8 @@ class TransferExecuteResponse(BaseModel):
 
 class LineupApplyRequest(BaseModel):
     formation: Formation
-    startingPlayerIds: List[str] = Field(..., min_length=11, max_length=11)
-    benchPlayerIds: List[str] = Field(default_factory=list, max_length=8)
+    startingPlayerIds: List[PlayerId] = Field(..., min_length=11, max_length=11)
+    benchPlayerIds: List[PlayerId] = Field(default_factory=list, max_length=8)
     reasoning: str = Field(..., min_length=1, max_length=1000)
 
 

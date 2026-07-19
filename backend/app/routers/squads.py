@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Header, Depends, status
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Header, Depends, Request
+from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
+import logging
 
 from ..db import get_db_connection
 from ..models import (
@@ -14,18 +15,20 @@ from ..data import get_players
 from ..access import require_ai_access
 from ..config import settings
 from ..operation_ledger import begin_operation, confirm_operation, fail_operation
-from .auth import decode_token
+from .auth import get_current_user_id
+from ..security import rate_limit
 
 router = APIRouter(prefix="/api/squad", tags=["squad"])
+logger = logging.getLogger(__name__)
 
 # ─── Schemas ───────────────────────────────────────────────────────────────────
 
 class SquadSaveRequest(BaseModel):
-    budget: float
+    budget: float = Field(..., ge=0, le=1000)
     cctpUsed: bool
     formation: Formation = '4-3-3'
-    squad: List[SquadSlot]
-    bench: List[SquadSlot]
+    squad: List[SquadSlot] = Field(..., max_length=11)
+    bench: List[SquadSlot] = Field(default_factory=list, max_length=8)
 
 
 FORMATION_COUNTS = {
@@ -37,15 +40,6 @@ FORMATION_COUNTS = {
 }
 
 # ─── Auth Dependency Helper ────────────────────────────────────────────────────
-
-def get_current_user_id(authorization: Optional[str] = Header(None)) -> int:
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization token is missing."
-        )
-    payload = decode_token(authorization)
-    return payload["user_id"]
 
 # ─── Helper to fetch player model ──────────────────────────────────────────────
 
@@ -102,7 +96,8 @@ async def load_squad(user_id: int = Depends(get_current_user_id)):
     }
 
 @router.post("/save")
-async def save_squad(req: SquadSaveRequest, user_id: int = Depends(get_current_user_id)):
+async def save_squad(req: SquadSaveRequest, request: Request, user_id: int = Depends(get_current_user_id)):
+    rate_limit(request, "squad-save", subject=str(user_id), limit=30, window_seconds=60)
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -205,10 +200,11 @@ async def save_squad(req: SquadSaveRequest, user_id: int = Depends(get_current_u
         conn.rollback()
         conn.close()
         raise
-    except Exception as e:
+    except Exception:
         conn.rollback()
         conn.close()
-        raise HTTPException(status_code=500, detail=f"Failed to save squad slots: {str(e)}")
+        logger.exception("Failed to save squad for user_id=%s", user_id)
+        raise HTTPException(status_code=500, detail="The squad could not be saved. Please try again.")
         
     conn.close()
     return {"success": True, "message": "Squad saved successfully to database."}
@@ -217,11 +213,13 @@ async def save_squad(req: SquadSaveRequest, user_id: int = Depends(get_current_u
 @router.post("/apply-lineup", response_model=LineupApplyResponse)
 async def apply_lineup(
     req: LineupApplyRequest,
+    request: Request,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user_id: int = Depends(get_current_user_id),
 ):
     """Apply a confirmed AI lineup using catalog IDs only."""
     require_ai_access(user_id)
+    rate_limit(request, "lineup-apply", subject=str(user_id), limit=20, window_seconds=60)
     counts = FORMATION_COUNTS[req.formation]
     catalog = {player.id: player for player in get_players()}
     all_ids = [*req.startingPlayerIds, *req.benchPlayerIds]
@@ -272,9 +270,10 @@ async def apply_lineup(
     except HTTPException:
         conn.rollback()
         raise
-    except Exception as error:
+    except Exception:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to apply lineup: {error}")
+        logger.exception("Lineup budget validation failed for user_id=%s", user_id)
+        raise HTTPException(status_code=500, detail="The lineup could not be validated. Please try again.")
     finally:
         conn.close()
 
@@ -368,5 +367,6 @@ async def apply_lineup(
         fail_operation(operation["operationId"], str(error.detail))
         raise
     except Exception as error:
-        fail_operation(operation["operationId"], str(error))
-        raise HTTPException(status_code=500, detail=f"Failed to apply lineup: {error}")
+        fail_operation(operation["operationId"], "Internal lineup application error")
+        logger.exception("Lineup application failed for user_id=%s", user_id)
+        raise HTTPException(status_code=500, detail="The lineup could not be applied. Please try again.") from error

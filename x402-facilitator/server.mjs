@@ -6,6 +6,7 @@
  * only holds a separate, low-balance burner key to pay Injective testnet gas.
  */
 import { createServer } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isAddress } from 'viem';
@@ -28,13 +29,17 @@ const config = {
   maxAmount: BigInt(process.env.X402_MAX_ATOMIC_AMOUNT || '5000000'),
 };
 
+const loopbackHosts = new Set(['127.0.0.1', '::1', 'localhost']);
+
 const configured = /^0x[a-fA-F0-9]{64}$/.test(config.privateKey)
   && isAddress(config.asset)
   && config.asset !== zeroAddress
   && isAddress(config.payTo)
   && config.payTo !== zeroAddress
   && Number.isInteger(config.port)
-  && config.port > 0;
+  && config.port > 0
+  && config.network === 'eip155:1439'
+  && (loopbackHosts.has(config.host) || config.token.length >= 32);
 
 const facilitator = configured
   ? new InjectiveFacilitator({
@@ -60,7 +65,11 @@ function isLoopback(address = '') {
 }
 
 function isAuthorized(request) {
-  if (config.token) return request.headers.authorization === `Bearer ${config.token}`;
+  if (config.token) {
+    const supplied = Buffer.from(String(request.headers.authorization || ''));
+    const expected = Buffer.from(`Bearer ${config.token}`);
+    return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+  }
   return isLoopback(request.socket.remoteAddress);
 }
 
@@ -80,15 +89,18 @@ function validRequirement(body) {
 
 async function parseJson(request) {
   let raw = '';
+  let bytes = 0;
   for await (const chunk of request) {
+    bytes += chunk.length;
+    if (bytes > 65_536) throw new Error('request body too large');
     raw += chunk;
-    if (raw.length > 65_536) throw new Error('request body too large');
   }
   return JSON.parse(raw || '{}');
 }
 
 const server = createServer(async (request, response) => {
   if (request.method === 'GET' && request.url === '/health') {
+    if (!isAuthorized(request)) return sendJson(response, 401, { error: 'unauthorized' });
     return sendJson(response, configured ? 200 : 503, {
       service: 'wcai-x402-facilitator',
       configured,
@@ -112,9 +124,15 @@ const server = createServer(async (request, response) => {
       : await facilitator.settle(body);
     return sendJson(response, 200, result);
   } catch (error) {
-    return sendJson(response, 400, { error: error instanceof Error ? error.message : 'invalid_request' });
+    console.warn(`x402 facilitator rejected a request (${error instanceof Error ? error.name : 'Error'})`);
+    return sendJson(response, 400, { error: 'invalid_request' });
   }
 });
+
+server.requestTimeout = 20_000;
+server.headersTimeout = 10_000;
+server.keepAliveTimeout = 5_000;
+server.maxHeadersCount = 50;
 
 server.listen(config.port, config.host, () => {
   console.log(`WCAI x402 facilitator listening on http://${config.host}:${config.port} (${configured ? 'configured' : 'configuration required'})`);

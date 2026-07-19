@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -21,6 +22,12 @@ class X402Verifier:
         for suffix in ("/verify", "/settle"):
             if base.endswith(suffix):
                 base = base[:-len(suffix)]
+        parsed = urlparse(base)
+        loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        if parsed.scheme not in {"http", "https"} or (parsed.scheme != "https" and not loopback):
+            raise ValueError("The x402 facilitator must use HTTPS unless it is bound to loopback")
+        if parsed.username or parsed.password:
+            raise ValueError("The x402 facilitator URL must not contain credentials")
         return f"{base}/{action}"
 
     def _headers(self) -> Dict[str, str]:
@@ -33,7 +40,7 @@ class X402Verifier:
     def _decode_payment_signature(payment_signature: str) -> Dict[str, Any]:
         try:
             padded = payment_signature + "=" * (-len(payment_signature) % 4)
-            decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
+            decoded = base64.b64decode(padded.encode("ascii"), altchars=b"-_", validate=True)
             payload = json.loads(decoded.decode("utf-8"))
         except (ValueError, UnicodeError, json.JSONDecodeError) as error:
             raise ValueError(f"Invalid PAYMENT-SIGNATURE payload: {error}") from error
@@ -59,7 +66,7 @@ class X402Verifier:
                 "paymentPayload": payment_payload,
                 "paymentRequirements": payment_requirements,
             }
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
                 verify_response = await client.post(
                     self._endpoint("verify"),
                     json=facilitator_body,
