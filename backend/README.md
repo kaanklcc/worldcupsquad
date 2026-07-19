@@ -17,7 +17,7 @@ Open `http://localhost:8000/docs` for the complete OpenAPI contract.
 - `POST /api/auth/register`, `POST /api/auth/login` — JWT session.
 - `GET /api/players`, `GET /api/players/{player_id}/intel` — sourced roster and player intelligence.
 - `POST /api/agent` — membership/x402-gated Gemini Agent Skills.
-- `POST /api/access/unlock` — explicit demo grant or x402 v2 402 challenge / settlement.
+- `POST /api/access/unlock` — explicit renewable 30-minute Hackathon Demo grant or x402 v2 402 challenge / testnet settlement.
 - `POST /api/squad/apply-lineup`, `POST /api/transfers/execute` — confirmed MCP-backed mutations.
 - `POST /api/cctp/intent`, `/attestation`, `/confirm` — wallet-signed CCTP v2 testnet flow.
 - `GET /api/operations/recent` — durable receipt ledger.

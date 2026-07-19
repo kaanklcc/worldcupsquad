@@ -213,6 +213,16 @@ export default function HomePage() {
     }
   }, [fetchAccessStatus, fetchSquadLineup]);
 
+  // Revalidate short-lived judge access while the dashboard remains open so
+  // locked controls return automatically when the 30-minute pass expires.
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = window.setInterval(() => {
+      void fetchAccessStatus();
+    }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [currentUser, fetchAccessStatus]);
+
   // Keep player cards, prices and live World Cup goal/assist tallies current
   // without forcing the user to reload the dashboard. The API itself caches
   // provider requests for one minute, so this interval never polls the source
@@ -602,6 +612,7 @@ export default function HomePage() {
   const handleUnlockAccess = useCallback(async (
     mode: 'membership' | 'single_use',
     walletAddress?: string,
+    accessMethod: 'demo' | 'x402' = 'demo',
   ) => {
     setAccessLoading(true);
     setAccessError(null);
@@ -610,7 +621,8 @@ export default function HomePage() {
         '/api/access/unlock',
         {
           mode,
-          hasPaidX402: !accessStatus?.isDemoAccount,
+          accessMethod,
+          hasPaidX402: accessMethod === 'x402',
           walletAddress: walletAddress || undefined,
         },
         createIdempotencyKey(`access-${mode}`),
@@ -623,9 +635,11 @@ export default function HomePage() {
           role: 'assistant',
           content:
             `✅ **Access activated**\n\n${data.message}\n` +
-            `Plan: **${data.membershipActive ? data.membershipTier : 'x402 Match Pass'}**\n` +
+            `Plan: **${data.membershipActive ? data.membershipTier : 'Match Pass'}**\n` +
             `Receipt: \`${data.receipt}\`` +
-            `${data.simulated ? '\n\n_Note: this is the Kaan judge-demo membership; no real funds were charged._' : '\n\nOn-chain x402 settlement was verified before access changed.'}`,
+            `${data.simulated
+              ? `\n\n_Hackathon Demo receipt: 0 USDC charged, no wallet signature and no on-chain settlement.${data.demoExpiresAt ? ` Access expires at ${new Date(data.demoExpiresAt).toLocaleString()}.` : ''}_`
+              : '\n\nOn-chain x402 testnet settlement was verified before access changed.'}`,
           isPremium: true,
         },
       ]);
@@ -635,7 +649,7 @@ export default function HomePage() {
     } finally {
       setAccessLoading(false);
     }
-  }, [accessStatus]);
+  }, []);
 
   const handleSaveWallet = useCallback(async (walletAddress: string) => {
     setAccessLoading(true);

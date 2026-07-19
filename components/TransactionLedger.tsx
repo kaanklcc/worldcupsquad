@@ -4,23 +4,29 @@ import { useMemo, useState } from 'react';
 import type { AccessStatus, OperationReceipt } from '@/types';
 
 type LedgerFilter = 'all' | 'access' | 'tactical' | 'funding';
+type ActionMeta = { label: string; bucket: Exclude<LedgerFilter, 'all'>; icon: string; color: string };
 
-const ACTION_META: Record<string, { label: string; bucket: Exclude<LedgerFilter, 'all'>; icon: string; color: string }> = {
-  unlock_membership: { label: 'Pro Membership', bucket: 'access', icon: 'workspace_premium', color: 'bg-amber-300 text-amber-950' },
-  unlock_match_pass: { label: 'x402 Match Pass', bucket: 'access', icon: 'bolt', color: 'bg-cyan-300 text-cyan-950' },
+const ACTION_META: Record<string, ActionMeta> = {
+  unlock_membership: { label: 'Pro access', bucket: 'access', icon: 'workspace_premium', color: 'bg-amber-300 text-amber-950' },
+  unlock_match_pass: { label: 'Match Pass', bucket: 'access', icon: 'bolt', color: 'bg-cyan-300 text-cyan-950' },
   apply_lineup: { label: 'AI lineup applied', bucket: 'tactical', icon: 'tactic', color: 'bg-emerald-300 text-emerald-950' },
   execute_transfer: { label: 'MCP transfer', bucket: 'tactical', icon: 'swap_horiz', color: 'bg-violet-300 text-violet-950' },
   acquire_cctp_backing: { label: 'CCTP backing', bucket: 'funding', icon: 'account_balance_wallet', color: 'bg-rose-300 text-rose-950' },
 };
 
-function metaFor(operation: OperationReceipt) {
-  return ACTION_META[operation.actionType] ?? { label: operation.actionType.replaceAll('_', ' '), bucket: 'tactical' as const, icon: 'receipt_long', color: 'bg-slate-300 text-slate-950' };
+function metaFor(operation: OperationReceipt): ActionMeta {
+  return ACTION_META[operation.actionType] ?? {
+    label: operation.actionType.replaceAll('_', ' '),
+    bucket: 'tactical',
+    icon: 'receipt_long',
+    color: 'bg-slate-300 text-slate-950',
+  };
 }
 
 function statusStyle(status: OperationReceipt['status']): string {
-  if (status === 'confirmed') return 'border-emerald-300/45 bg-emerald-400/15 text-emerald-100';
-  if (status === 'failed') return 'border-rose-300/45 bg-rose-400/15 text-rose-100';
-  return 'border-amber-300/45 bg-amber-300/15 text-amber-100';
+  if (status === 'confirmed') return 'border-emerald-300/45 bg-emerald-400/15 text-emerald-800';
+  if (status === 'failed') return 'border-rose-300/45 bg-rose-400/15 text-rose-800';
+  return 'border-amber-300/45 bg-amber-300/15 text-amber-800';
 }
 
 function shortHash(value?: string | null): string {
@@ -28,14 +34,103 @@ function shortHash(value?: string | null): string {
   return value.length > 28 ? `${value.slice(0, 14)}…${value.slice(-10)}` : value;
 }
 
-export default function TransactionLedger({ operations, accessStatus, onOpenMembership }: { operations: OperationReceipt[]; accessStatus: AccessStatus | null; onOpenMembership: () => void }) {
+export default function TransactionLedger({
+  operations,
+  accessStatus,
+  onOpenMembership,
+}: {
+  operations: OperationReceipt[];
+  accessStatus: AccessStatus | null;
+  onOpenMembership: () => void;
+}) {
   const [filter, setFilter] = useState<LedgerFilter>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const filtered = useMemo(() => operations.filter((operation) => filter === 'all' || metaFor(operation).bucket === filter), [filter, operations]);
+  const filtered = useMemo(
+    () => operations.filter((operation) => filter === 'all' || metaFor(operation).bucket === filter),
+    [filter, operations],
+  );
   const confirmed = operations.filter((operation) => operation.status === 'confirmed').length;
-  const paidAccess = operations.filter((operation) => metaFor(operation).bucket === 'access' && operation.status === 'confirmed').length;
+  const accessReceipts = operations.filter((operation) => metaFor(operation).bucket === 'access' && operation.status === 'confirmed').length;
   const funding = operations.filter((operation) => metaFor(operation).bucket === 'funding' && operation.status === 'confirmed').length;
-  const activeAccess = accessStatus?.membershipActive ? accessStatus.membershipTier === 'demo_pro' ? 'Demo Pro active' : 'Pro active' : accessStatus?.accessPassActive ? 'Match Pass active' : 'Access locked';
+  const activeAccess = accessStatus?.membershipActive
+    ? accessStatus.membershipSource === 'hackathon_demo_pro' ? 'Hackathon Demo Pro active' : 'Pro active'
+    : accessStatus?.accessPassActive ? 'Demo Match Pass active' : 'Access locked';
 
-  return <section className="space-y-6 pb-10"><header className="relative overflow-hidden rounded-3xl border border-emerald-300/25 bg-[radial-gradient(circle_at_88%_8%,rgba(223,181,59,.3),transparent_24%),linear-gradient(135deg,#072e28,#0b5b47_58%,#123337)] p-6 text-white shadow-[0_28px_55px_rgba(7,46,40,.24)]"><div className="absolute -right-3 top-0 font-display-lg text-[9rem] font-black leading-none text-white/[.045]">402</div><div className="relative grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(310px,.8fr)]"><div><p className="font-mono-jb text-[10px] font-bold uppercase tracking-[.24em] text-amber-200">Injective commerce + action integrity</p><h1 className="mt-2 font-display-lg text-4xl font-black uppercase tracking-tight md:text-5xl">Manager Ledger</h1><p className="mt-3 max-w-2xl text-sm leading-relaxed text-emerald-50/80">The operational history of your squad: x402 access, CCTP backing and explicit MCP tactical actions. Each entry is a replay-safe intent with a durable receipt.</p></div><div className="rounded-2xl border border-white/15 bg-slate-950/25 p-4 backdrop-blur"><div className="flex items-center justify-between gap-3"><div><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-emerald-100">Current entitlement</p><p className="mt-1 text-xl font-bold text-white">{activeAccess}</p></div><span className={`grid h-10 w-10 place-items-center rounded-xl ${accessStatus?.hasAiAccess ? 'bg-emerald-300 text-emerald-950' : 'bg-amber-300 text-amber-950'}`}><span className="material-symbols-outlined">{accessStatus?.hasAiAccess ? 'verified' : 'lock'}</span></span></div><button onClick={onOpenMembership} className="mt-4 w-full rounded-lg border border-amber-200/40 bg-amber-300 px-3 py-2.5 font-display-lg text-xs font-bold uppercase text-slate-950 transition hover:brightness-110">{accessStatus?.hasAiAccess ? 'Manage access & wallet' : 'Unlock membership or pass'}</button></div></div></header><div className="grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-200 bg-white/85 p-4 shadow-sm"><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-slate-400">Confirmed actions</p><p className="mt-2 font-display-lg text-4xl font-black text-emerald-700">{confirmed}</p><p className="mt-1 text-xs text-slate-500">out of {operations.length} durable intents</p></div><div className="rounded-2xl border border-slate-200 bg-white/85 p-4 shadow-sm"><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-slate-400">x402 access receipts</p><p className="mt-2 font-display-lg text-4xl font-black text-amber-600">{paidAccess}</p><p className="mt-1 text-xs text-slate-500">Pro membership or Match Pass</p></div><div className="rounded-2xl border border-slate-200 bg-white/85 p-4 shadow-sm"><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-slate-400">CCTP backing</p><p className="mt-2 font-display-lg text-4xl font-black text-rose-600">{funding}</p><p className="mt-1 text-xs text-slate-500">One-time 20 USDC budget rail</p></div></div><section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(310px,.65fr)]"><div className="rounded-3xl border border-slate-200 bg-white/85 p-4 shadow-sm md:p-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-emerald-600">Receipt stream</p><h2 className="mt-1 font-display-lg text-3xl font-black uppercase text-slate-900">Action history</h2></div><div className="flex flex-wrap gap-1.5">{(['all', 'access', 'tactical', 'funding'] as LedgerFilter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition ${filter === item ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-amber-400'}`}>{item}</button>)}</div></div><div className="mt-5 space-y-3">{filtered.length ? filtered.map((operation) => { const meta = metaFor(operation); const isExpanded = expanded === operation.operationId; return <article key={operation.operationId} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/75 transition hover:border-emerald-300"><button onClick={() => setExpanded(isExpanded ? null : operation.operationId)} className="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left"><div className="flex min-w-0 gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${meta.color}`}><span className="material-symbols-outlined">{meta.icon}</span></span><div className="min-w-0"><p className="font-bold capitalize text-slate-900">{meta.label}</p><p className="mt-1 truncate font-mono-jb text-[10px] text-slate-500">{operation.operationId}</p></div></div><div className="flex items-center gap-2"><span className={`rounded-full border px-2 py-1 font-mono-jb text-[9px] font-bold uppercase ${statusStyle(operation.status)}`}>{operation.status}</span><span className="material-symbols-outlined text-slate-400">{isExpanded ? 'expand_less' : 'expand_more'}</span></div></button><div className="grid gap-3 border-t border-slate-200 px-4 py-3 text-xs sm:grid-cols-3"><div><p className="font-mono-jb text-[9px] uppercase tracking-wider text-slate-400">Provider</p><p className="mt-1 font-bold text-slate-700">{operation.provider} {operation.network ? `· ${operation.network}` : ''}</p></div><div><p className="font-mono-jb text-[9px] uppercase tracking-wider text-slate-400">Receipt</p><p className="mt-1 font-mono-jb text-[10px] text-slate-700" title={operation.txHash ?? undefined}>{shortHash(operation.txHash)}</p></div><div><p className="font-mono-jb text-[9px] uppercase tracking-wider text-slate-400">Transport</p><p className={`mt-1 font-bold ${operation.simulated ? 'text-amber-700' : 'text-emerald-700'}`}>{operation.simulated ? 'Demo simulation' : 'Provider confirmed'}</p></div></div>{isExpanded && <div className="border-t border-slate-200 bg-white px-4 py-4"><div className="grid gap-3 text-xs md:grid-cols-2"><div><p className="font-mono-jb text-[9px] font-bold uppercase tracking-wider text-slate-400">Idempotency key</p><p className="mt-1 break-all font-mono-jb text-[10px] text-slate-600">{operation.idempotencyKey}</p></div><div><p className="font-mono-jb text-[9px] font-bold uppercase tracking-wider text-slate-400">Timeline</p><p className="mt-1 text-slate-600">Created {new Date(operation.createdAt).toLocaleString()} · Updated {new Date(operation.updatedAt).toLocaleString()}</p></div></div>{operation.error && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-700">{operation.error}</p>}{operation.receipt && <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-slate-950 p-3 text-[10px] leading-relaxed text-emerald-100">{JSON.stringify(operation.receipt, null, 2)}</pre>}</div>}</article>; }) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center"><span className="material-symbols-outlined text-4xl text-amber-500">receipt_long</span><p className="mt-3 font-bold text-slate-800">No {filter === 'all' ? '' : filter} actions yet</p><p className="mt-1 text-sm text-slate-500">Use the access rail, apply an AI lineup or acquire CCTP backing to create a durable receipt.</p></div>}</div></div><aside className="space-y-4"><div className="rounded-3xl border border-emerald-200 bg-[linear-gradient(145deg,#0a4b3e,#0d6650)] p-5 text-white shadow-lg"><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-amber-200">x402 access rail</p><h2 className="mt-2 font-display-lg text-3xl font-black uppercase">What access unlocks</h2><div className="mt-4 space-y-3 text-sm text-emerald-50/90"><p className="flex gap-2"><span className="material-symbols-outlined text-amber-200">smart_toy</span>Gemini chat and Deep Tactical Analytics: Pro or 15-minute Match Pass.</p><p className="flex gap-2"><span className="material-symbols-outlined text-amber-200">account_balance_wallet</span>Injective wallet and CCTP 20 USDC backing: Pro Membership only.</p><p className="flex gap-2"><span className="material-symbols-outlined text-amber-200">hub</span>MCP lineup and transfer application: authenticated AI access.</p></div><button onClick={onOpenMembership} className="mt-5 w-full rounded-lg bg-amber-300 px-3 py-3 font-display-lg text-xs font-bold uppercase text-slate-950">Open access console</button></div><div className="rounded-3xl border border-slate-200 bg-white/85 p-5 shadow-sm"><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-slate-400">Safe settlement sequence</p><ol className="mt-4 space-y-4"><li className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-100 font-mono-jb text-xs font-bold text-emerald-800">1</span><p className="text-sm text-slate-600"><strong className="text-slate-800">Validate intent</strong><br />Invalid paid requests are stopped before any payment flow.</p></li><li className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-100 font-mono-jb text-xs font-bold text-amber-800">2</span><p className="text-sm text-slate-600"><strong className="text-slate-800">Verify & settle</strong><br />x402 facilitator verification precedes entitlement changes.</p></li><li className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cyan-100 font-mono-jb text-xs font-bold text-cyan-800">3</span><p className="text-sm text-slate-600"><strong className="text-slate-800">Persist receipt</strong><br />Idempotency keys make retries return the original result.</p></li></ol></div></aside></section></section>;
+  return (
+    <section className="space-y-6 pb-10">
+      <header className="relative overflow-hidden rounded-3xl border border-emerald-300/25 bg-[radial-gradient(circle_at_88%_8%,rgba(223,181,59,.3),transparent_24%),linear-gradient(135deg,#072e28,#0b5b47_58%,#123337)] p-6 text-white shadow-[0_28px_55px_rgba(7,46,40,.24)]">
+        <div className="absolute -right-3 top-0 font-display-lg text-[9rem] font-black leading-none text-white/[.045]">402</div>
+        <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(310px,.8fr)]">
+          <div>
+            <p className="font-mono-jb text-[10px] font-bold uppercase tracking-[.24em] text-amber-200">Injective commerce + action integrity</p>
+            <h1 className="mt-2 font-display-lg text-4xl font-black uppercase tracking-tight md:text-5xl">Manager Ledger</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-emerald-50/80">Replay-safe receipts for Demo Pass or verified x402 access, CCTP backing and confirmed MCP tactical actions.</p>
+          </div>
+          <div className="rounded-2xl border border-white/15 bg-slate-950/25 p-4 backdrop-blur">
+            <div className="flex items-center justify-between gap-3">
+              <div><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-emerald-100">Current entitlement</p><p className="mt-1 text-xl font-bold text-white">{activeAccess}</p></div>
+              <span className={`grid h-10 w-10 place-items-center rounded-xl ${accessStatus?.hasAiAccess ? 'bg-emerald-300 text-emerald-950' : 'bg-amber-300 text-amber-950'}`}><span className="material-symbols-outlined">{accessStatus?.hasAiAccess ? 'verified' : 'lock'}</span></span>
+            </div>
+            <button onClick={onOpenMembership} className="mt-4 w-full rounded-lg border border-amber-200/40 bg-amber-300 px-3 py-2.5 font-display-lg text-xs font-bold uppercase text-slate-950 transition hover:brightness-110">{accessStatus?.hasAiAccess ? 'Manage access & wallet' : 'Unlock membership or pass'}</button>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[['Confirmed actions', confirmed, `out of ${operations.length} durable intents`, 'text-emerald-700'], ['Access receipts', accessReceipts, 'Demo or verified x402', 'text-amber-600'], ['CCTP backing', funding, 'One-time 20 test USDC rail', 'text-rose-600']].map(([label, value, detail, color]) => (
+          <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white/85 p-4 shadow-sm">
+            <p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
+            <p className={`mt-2 font-display-lg text-4xl font-black ${color}`}>{value}</p>
+            <p className="mt-1 text-xs text-slate-500">{detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(310px,.65fr)]">
+        <div className="rounded-3xl border border-slate-200 bg-white/85 p-4 shadow-sm md:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div><p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-emerald-600">Receipt stream</p><h2 className="mt-1 font-display-lg text-3xl font-black uppercase text-slate-900">Action history</h2></div>
+            <div className="flex flex-wrap gap-1.5">
+              {(['all', 'access', 'tactical', 'funding'] as LedgerFilter[]).map((item) => (
+                <button key={item} onClick={() => setFilter(item)} className={`rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition ${filter === item ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-amber-400'}`}>{item}</button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-5 space-y-3">
+            {filtered.length ? filtered.map((operation) => {
+              const meta = metaFor(operation);
+              const isExpanded = expanded === operation.operationId;
+              return (
+                <article key={operation.operationId} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/75 transition hover:border-emerald-300">
+                  <button onClick={() => setExpanded(isExpanded ? null : operation.operationId)} className="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left">
+                    <div className="flex min-w-0 gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${meta.color}`}><span className="material-symbols-outlined">{meta.icon}</span></span><div className="min-w-0"><p className="font-bold capitalize text-slate-900">{meta.label}</p><p className="mt-1 truncate font-mono-jb text-[10px] text-slate-500">{operation.operationId}</p></div></div>
+                    <div className="flex items-center gap-2"><span className={`rounded-full border px-2 py-1 font-mono-jb text-[9px] font-bold uppercase ${statusStyle(operation.status)}`}>{operation.status}</span><span className="material-symbols-outlined text-slate-400">{isExpanded ? 'expand_less' : 'expand_more'}</span></div>
+                  </button>
+                  <div className="grid gap-3 border-t border-slate-200 px-4 py-3 text-xs sm:grid-cols-3">
+                    <div><p className="font-mono-jb text-[9px] uppercase tracking-wider text-slate-400">Provider</p><p className="mt-1 font-bold text-slate-700">{operation.provider} {operation.network ? `· ${operation.network}` : ''}</p></div>
+                    <div><p className="font-mono-jb text-[9px] uppercase tracking-wider text-slate-400">Receipt</p><p className="mt-1 font-mono-jb text-[10px] text-slate-700" title={operation.txHash ?? undefined}>{shortHash(operation.txHash)}</p></div>
+                    <div><p className="font-mono-jb text-[9px] uppercase tracking-wider text-slate-400">Settlement</p><p className={`mt-1 font-bold ${operation.simulated ? 'text-amber-700' : 'text-emerald-700'}`}>{operation.simulated ? 'Hackathon Demo · 0 USDC' : 'Provider confirmed'}</p></div>
+                  </div>
+                  {isExpanded && <div className="border-t border-slate-200 bg-white px-4 py-4"><div className="grid gap-3 text-xs md:grid-cols-2"><div><p className="font-mono-jb text-[9px] font-bold uppercase tracking-wider text-slate-400">Idempotency key</p><p className="mt-1 break-all font-mono-jb text-[10px] text-slate-600">{operation.idempotencyKey}</p></div><div><p className="font-mono-jb text-[9px] font-bold uppercase tracking-wider text-slate-400">Timeline</p><p className="mt-1 text-slate-600">Created {new Date(operation.createdAt).toLocaleString()} · Updated {new Date(operation.updatedAt).toLocaleString()}</p></div></div>{operation.error && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-700">{operation.error}</p>}{operation.receipt && <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-slate-950 p-3 text-[10px] leading-relaxed text-emerald-100">{JSON.stringify(operation.receipt, null, 2)}</pre>}</div>}
+                </article>
+              );
+            }) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center"><span className="material-symbols-outlined text-4xl text-amber-500">receipt_long</span><p className="mt-3 font-bold text-slate-800">No {filter === 'all' ? '' : filter} actions yet</p><p className="mt-1 text-sm text-slate-500">Activate access, apply an AI lineup or acquire CCTP backing to create a durable receipt.</p></div>}
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <div className="rounded-3xl border border-emerald-200 bg-[linear-gradient(145deg,#0a4b3e,#0d6650)] p-5 text-white shadow-lg">
+            <p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-amber-200">x402 access rail</p>
+            <h2 className="mt-2 font-display-lg text-3xl font-black uppercase">What access unlocks</h2>
+            <div className="mt-4 space-y-3 text-sm text-emerald-50/90"><p className="flex gap-2"><span className="material-symbols-outlined text-amber-200">smart_toy</span>Gemini chat and Deep Tactical Analytics: Pro or 30-minute Hackathon Match Pass.</p><p className="flex gap-2"><span className="material-symbols-outlined text-amber-200">account_balance_wallet</span>Injective wallet and CCTP 20 test USDC backing: Pro only.</p><p className="flex gap-2"><span className="material-symbols-outlined text-amber-200">hub</span>MCP lineup and transfer application: authenticated AI access.</p></div>
+            <button onClick={onOpenMembership} className="mt-5 w-full rounded-lg bg-amber-300 px-3 py-3 font-display-lg text-xs font-bold uppercase text-slate-950">Open access console</button>
+          </div>
+          <div className="rounded-3xl border border-slate-200 bg-white/85 p-5 shadow-sm">
+            <p className="font-mono-jb text-[10px] font-bold uppercase tracking-widest text-slate-400">Two honest checkout paths</p>
+            <ol className="mt-4 space-y-4"><li className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cyan-100 font-mono-jb text-xs font-bold text-cyan-800">1</span><p className="text-sm text-slate-600"><strong className="text-slate-800">Judge Demo</strong><br />Explicit activation creates a 30-minute, 0 USDC simulated receipt.</p></li><li className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-100 font-mono-jb text-xs font-bold text-amber-800">2</span><p className="text-sm text-slate-600"><strong className="text-slate-800">Real testnet x402</strong><br />When configured, wallet authorization is verified and settled before access changes.</p></li><li className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-100 font-mono-jb text-xs font-bold text-emerald-800">3</span><p className="text-sm text-slate-600"><strong className="text-slate-800">Durable evidence</strong><br />Idempotency keys make retries return the original receipt.</p></li></ol>
+          </div>
+        </aside>
+      </section>
+    </section>
+  );
 }

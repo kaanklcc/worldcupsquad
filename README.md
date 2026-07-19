@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Explainable AI squad decisions for World Cup fans, settled and audited with Injective.**
+**Explainable AI squad decisions for World Cup fans, with Injective-backed testnet rails and auditable actions.**
 
 [![Injective Global Cup](https://img.shields.io/badge/Injective_Global_Cup-2026-6C5CE7?style=for-the-badge)](https://www.hackquest.io/hackathons/The-Injective-Global-Cup)
 ![x402](https://img.shields.io/badge/x402-HTTP_Payments-13C296?style=for-the-badge)
@@ -47,7 +47,7 @@ The AI can discuss a matchup without touching the squad, recommend a single repl
 - Approve or reject tactical proposals; lineup and transfer mutations are never silently applied.
 - Compare formations in the non-mutating **Tactical Lab** and open a source-aware **Matchday Brief**.
 - Follow live competition context through **Tournament HQ**, fixtures, knockout routes and squad intelligence.
-- Unlock premium AI through a membership or a time-limited **x402 Match Pass**.
+- Start locked, then explicitly activate a renewable 30-minute **Hackathon Demo Pro** or **Hackathon Match Pass** with a visible `0 USDC` receipt; optionally use the separate wallet-signed **x402** testnet route.
 - Add a one-time fantasy budget rail through **Circle CCTP v2 on testnet**.
 - Audit access, funding, lineup and transfer activity in a replay-safe **Action Ledger**.
 
@@ -60,7 +60,7 @@ The AI can discuss a matchup without touching the squad, recommend a single repl
 | “Build a 3-5-2 with Messi and Yamal.” | Exact formation, required-player and budget validation before an approval card appears. |
 | “Which information is official?” | Source-backed roster facts and live overlays are visibly separated from WCAI estimates. |
 | “What did the AI actually change?” | MCP receipt plus a durable, idempotent Action Ledger entry. |
-| “How do I access premium analysis?” | HTTP-native x402 access with a wallet-signed testnet payment path. |
+| “How do I access premium analysis?” | A transparent 30-minute judge demo path plus an HTTP-native, wallet-signed x402 testnet payment path. |
 | “How does cross-chain USDC affect the product?” | Confirmed CCTP burn/attest/mint receipts unlock a one-time fantasy budget boost. |
 
 ## Injective technology, used as product infrastructure
@@ -97,8 +97,21 @@ sequenceDiagram
 
 - Uses the official `@injectivelabs/x402` package and Injective EVM Testnet (`eip155:1439`).
 - The API grants access only after facilitator verification **and** settlement succeed.
-- The preconfigured judge account has an explicitly labelled `0 USDC` demo entitlement; it never masquerades as a real payment.
-- Every other account fails closed when the facilitator, receiver or asset is not configured.
+- Every newly registered account starts locked. A judge must explicitly choose Demo Pro or Demo Match Pass before premium tools open.
+- With `X402_ALLOW_SIMULATED_PURCHASES=true`, that checkout creates a renewable 30-minute, explicitly labelled `0 USDC` Hackathon Demo entitlement and a replay-safe simulated receipt. It never masquerades as an on-chain payment.
+- The separate real x402 option still fails closed unless the facilitator, receiver and asset are configured and verification plus settlement succeed.
+
+#### Judge Demo checkout (the default review path)
+
+Every reviewer receives the same reproducible experience without being asked to source test USDC:
+
+1. A newly registered account is **locked**; no premium capability is silently enabled.
+2. The reviewer opens **WCAI Access** and deliberately selects **Hackathon Demo Pro** or **Hackathon Match Pass**.
+3. The API grants only the selected entitlement for `HACKATHON_DEMO_MINUTES` (default: 30), shows a live countdown, and writes an idempotent receipt to **Action Ledger**.
+4. The receipt explicitly states `simulated: true`, `0 USDC`, no wallet signature and no on-chain settlement.
+5. On expiry, protected tools lock again. The reviewer can activate a new short-lived demo pass and receive a new receipt.
+
+Demo Pro unlocks Gemini, Deep Tactical Analytics, MCP tactical actions and the finance console. Demo Match Pass unlocks Gemini and analytics only. This prevents a misleading “premium already open” reviewer account while keeping the full product journey testable. The wallet-signed Injective EVM Testnet x402 route remains available separately whenever its facilitator is configured.
 
 ### 2. CCTP: cross-chain value tied to a real product action
 
@@ -284,9 +297,11 @@ npm run dev
 
 Open [`http://localhost:3000`](http://localhost:3000).
 
-### 4. Optional: run real x402 settlement on testnet
+### 4. Access checkout: judge demo and optional real x402
 
-The judge demo entitlement is free and visibly labelled. To exercise an actual wallet-signed x402 flow with another account:
+For submission review, keep `X402_ALLOW_SIMULATED_PURCHASES=true` and `HACKATHON_DEMO_MINUTES=30`. A new account remains locked until the judge opens the access console and activates Demo Pro or Match Pass. The resulting receipt says `simulated: true`, charges `0 USDC`, expires automatically and can be activated again after expiry.
+
+To additionally exercise an actual wallet-signed x402 flow on Injective EVM Testnet:
 
 ```powershell
 Copy-Item x402-facilitator/.env.example x402-facilitator/.env
@@ -294,7 +309,7 @@ Copy-Item x402-facilitator/.env.example x402-facilitator/.env
 npm run facilitator
 ```
 
-Then configure the matching `X402_FACILITATOR_URL`, `X402_PAY_TO`, asset and network in `backend/.env`. Full isolation and health-check instructions are in [`x402-facilitator/README.md`](x402-facilitator/README.md).
+Then configure the matching `X402_FACILITATOR_URL`, `X402_PAY_TO`, asset and network in `backend/.env`. The real testnet option remains separate in the access console. Full isolation and health-check instructions are in [`x402-facilitator/README.md`](x402-facilitator/README.md).
 
 ### 5. Optional: run the CCTP testnet journey
 
@@ -310,14 +325,16 @@ This repository is intentionally testnet-only. Do not configure mainnet assets, 
 
 The full journey is demonstrated in [`demo-video/WCAI-Hackathon-Demo.mp4`](demo-video/WCAI-Hackathon-Demo.mp4). For a fast hands-on review:
 
-1. Register or sign in and inspect the access console.
-2. Select **3-5-2**, add/remove a player and open a Player Intel card.
-3. Ask: `Analyse Argentina versus England, but do not change my lineup.`
-4. Ask: `Replace Cubarsí with an attacking Spanish defender.` Review and reject or approve the single-player proposal.
-5. Ask: `Build a budget-valid 3-5-2 with Messi and Yamal.` Confirm that the proposal contains the requested formation and exact players.
-6. Apply the lineup and inspect its MCP receipt in **Action Ledger**.
-7. Open **Deep Tactical Analytics**, **Matchday**, **Tactical Lab** and **Tournament HQ**.
-8. Open **Finance** to inspect x402 access and the wallet-signed CCTP testnet sequence.
+1. Register a new account. Confirm that AI and analytics begin locked.
+2. Open **WCAI Access** and choose **Hackathon Demo Pro**. Confirm the `0 USDC`, `simulated` checkout disclosure and 30-minute countdown.
+3. Open **Action Ledger** and inspect the new replay-safe Demo receipt.
+4. Select **3-5-2**, add/remove a player and open a Player Intel card.
+5. Ask: `Analyse Argentina versus England, but do not change my lineup.`
+6. Ask: `Replace Cubarsí with an attacking Spanish defender.` Review and reject or approve the single-player proposal.
+7. Ask: `Build a budget-valid 3-5-2 with Messi and Yamal.` Confirm that the proposal contains the requested formation and exact players.
+8. Apply the lineup and inspect its MCP receipt in **Action Ledger**.
+9. Open **Deep Tactical Analytics**, **Matchday**, **Tactical Lab** and **Tournament HQ**.
+10. Open **Finance** to inspect the separate wallet-signed x402 and CCTP testnet sequence. Use only testnet wallets and test tokens.
 
 ## Quality and verification
 
@@ -332,10 +349,12 @@ cd backend
 .\venv\Scripts\python.exe -m compileall -q app
 ```
 
-The backend currently includes **17 regression scenarios** covering:
+The backend currently includes **21 regression scenarios** covering:
 
 - premium gating without leaking locked prompts to Gemini;
-- x402 v2 challenge construction and replay-safe receipts;
+- locked → Demo Pro / Match Pass → expiry → renewable activation for a newly created account;
+- visible `0 USDC` simulated demo receipts, entitlement separation and replay-safe operation receipts;
+- x402 v2 challenge construction plus verified facilitator settlement for a non-demo account;
 - exact formation and required-player persistence;
 - conversational analysis versus mutation intent;
 - single-player replacement behaviour;
@@ -361,16 +380,27 @@ See [`SECURITY.md`](SECURITY.md) for the complete operator checklist and disclos
 | Injective Global Cup criterion | WCAI evidence |
 | --- | --- |
 | **Usefulness and clarity** | Solves a concrete fan problem: turning fragmented World Cup intelligence into an explainable squad decision. |
-| **Quality of execution** | Typed frontend/backend boundary, exact proposal cards, explicit consent, receipt ledger and regression suite. |
-| **Simplicity and usability** | One command-centre UI from question to approved action; no blockchain knowledge required for normal squad analysis. |
+| **Quality of execution** | Typed frontend/backend boundary, exact proposal cards, explicit consent, expiry-aware receipt ledger and 21 regression scenarios. |
+| **Simplicity and usability** | One command-centre UI from question to approved action; a new reviewer can unlock a clearly labelled 30-minute demo without wallet friction. |
 | **Code structure and documentation** | Separated Next.js UI, FastAPI domain API, Agent Skills, stdio MCP server and private x402 facilitator. |
 | **World Cup data integration** | 48 teams, 1,248 sourced players, runtime fixture/event overlays, Matchday Brief and Tournament HQ. |
-| **New Injective technologies** | x402 gates premium AI, CCTP funds the fantasy rail, MCP validates approved actions, Agent Skills constrain Gemini. |
+| **New Injective technologies** | x402 has a browser-signed Injective EVM Testnet verify/settle path; CCTP funds the fantasy rail; MCP validates approved actions; Agent Skills constrain Gemini. The no-charge judge path is separately labelled as a simulation. |
 | **Future contribution potential** | Additional live-data adapters, public MCP clients, new paid analytics skills and mainnet migration can be added behind existing boundaries. |
+
+## Submission package
+
+For the Injective Global Cup Typeform submission, provide:
+
+- **Project name:** WCAI — World Cup AI Command Centre
+- **Repository:** this GitHub repository, including this README and the testnet-only configuration guidance
+- **Demo / product link:** the deployed WCAI URL
+- **Demo video:** [`demo-video/WCAI-Hackathon-Demo.mp4`](demo-video/WCAI-Hackathon-Demo.mp4)
+
+For the X post, include a product screenshot or short demo, the repository and product links, tag `@injective`, `@NinjaLabsHQ` and `@NinjaLabsCN`, and use `#InjectiveGlobalCupHackathon`. Mention all four integrations—x402, USDC CCTP, MCP Server and Agent Skills—and add live-data screenshots in the main post’s comments where possible.
 
 ## Responsible demo status
 
-WCAI is a hackathon prototype, not a betting, custody or financial-advice product. Fantasy prices and tactical ratings are application estimates. The included blockchain journey uses test tokens with no monetary value. A free judge path is explicitly marked as simulated; provider-confirmed receipts are labelled separately.
+WCAI is a hackathon prototype, not a betting, custody or financial-advice product. Fantasy prices and tactical ratings are application estimates. The included blockchain journey uses test tokens with no monetary value. The renewable 30-minute judge path is explicitly marked as simulated and `0 USDC`; provider-confirmed testnet receipts are labelled separately.
 
 ## Official references
 

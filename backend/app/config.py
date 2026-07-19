@@ -22,9 +22,11 @@ class Settings(BaseSettings):
     # x402
     x402_facilitator_url: str = ""
     x402_demo_mode: bool = True
-    # Optional presentation-only switch. Kaan's demo membership does not need
-    # this; other accounts remain payment-gated by default.
+    # Hackathon judge mode: users still start locked and explicitly activate a
+    # short-lived, visibly simulated pass. Real x402 remains available when a
+    # facilitator is configured and the client selects the x402 method.
     x402_allow_simulated_purchases: bool = False
+    hackathon_demo_minutes: int = 30
     # x402 v2 uses CAIP-2 network identifiers. Injective EVM testnet is 1439.
     x402_network: str = "eip155:1439"
     # Operator-owned receiver address; intentionally has no default.

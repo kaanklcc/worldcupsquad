@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -30,6 +31,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
             "jwt_secret_key": settings.jwt_secret_key,
             "x402_demo_mode": settings.x402_demo_mode,
             "x402_allow_simulated_purchases": settings.x402_allow_simulated_purchases,
+            "hackathon_demo_minutes": settings.hackathon_demo_minutes,
             "x402_facilitator_url": settings.x402_facilitator_url,
             "x402_pay_to": settings.x402_pay_to,
             "x402_asset": settings.x402_asset,
@@ -41,6 +43,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         settings.jwt_secret_key = "test-only-jwt-secret-with-at-least-32-characters"
         settings.x402_demo_mode = True
         settings.x402_allow_simulated_purchases = False
+        settings.hackathon_demo_minutes = 30
         settings.x402_facilitator_url = "https://facilitator.test"
         settings.x402_pay_to = "0x3333333333333333333333333333333333333333"
         settings.x402_asset = "0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d"
@@ -92,7 +95,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         response = self.client.post(
             "/api/access/unlock",
             headers=self.auth(token),
-            json={"mode": "membership", "hasPaidX402": False},
+            json={"mode": "membership", "accessMethod": "demo", "hasPaidX402": False},
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertTrue(response.json()["simulated"])
@@ -117,7 +120,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
             self.assertIn("Deep Tactical Analytics", payload["message"])
             self.assertIn("x402", payload["message"])
 
-    def test_kaan_demo_membership_is_free_but_explicit_and_persistent(self):
+    def test_kaan_demo_membership_is_free_explicit_and_time_boxed(self):
         token = self.register_and_login("Kaan")
         before = self.client.get("/api/access/status", headers=self.auth(token)).json()
         self.assertFalse(before["membershipActive"])
@@ -126,12 +129,105 @@ class AutoGafferRegressionTests(unittest.TestCase):
         after = self.client.get("/api/access/status", headers=self.auth(token)).json()
         self.assertTrue(after["membershipActive"])
         self.assertTrue(after["hasAiAccess"])
-        self.assertEqual(after["accessSource"], "kaan_demo")
+        self.assertEqual(after["accessSource"], "hackathon_demo_pro")
+        self.assertIsNotNone(after["membershipExpiresAt"])
+        remaining = (
+            datetime.fromisoformat(after["membershipExpiresAt"]) - datetime.now(timezone.utc)
+        ).total_seconds()
+        self.assertGreater(remaining, 29 * 60)
+        self.assertLessEqual(remaining, 30 * 60)
+
+    def test_any_new_manager_can_explicitly_activate_demo_pro_for_30_minutes(self):
+        settings.x402_allow_simulated_purchases = True
+        try:
+            token = self.register_and_login("judgepro")
+            before = self.client.get("/api/access/status", headers=self.auth(token)).json()
+            self.assertFalse(before["hasAiAccess"])
+            self.assertTrue(before["demoAccessAvailable"])
+            self.assertEqual(before["demoDurationMinutes"], 30)
+
+            response = self.client.post(
+                "/api/access/unlock",
+                headers={**self.auth(token), "Idempotency-Key": "judge-demo-pro"},
+                json={"mode": "membership", "accessMethod": "demo"},
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            payload = response.json()
+            self.assertTrue(payload["simulated"])
+            self.assertEqual(payload["chargedAmountUsdc"], 0)
+            self.assertEqual(payload["demoReceipt"]["settlement"], "simulated")
+            self.assertTrue(payload["membershipActive"])
+            self.assertTrue(payload["hasAiAccess"])
+            self.assertTrue(payload["hasAnalyticsAccess"])
+            self.assertTrue(payload["hasFinanceAccess"])
+
+            ledger = self.client.get("/api/operations/recent", headers=self.auth(token)).json()
+            access_operations = [item for item in ledger["operations"] if item["actionType"] == "unlock_membership"]
+            self.assertEqual(len(access_operations), 1)
+            self.assertEqual(access_operations[0]["provider"], "hackathon_demo")
+            self.assertTrue(access_operations[0]["simulated"])
+        finally:
+            settings.x402_allow_simulated_purchases = False
+
+    def test_demo_match_pass_unlocks_ai_but_not_finance(self):
+        settings.x402_allow_simulated_purchases = True
+        try:
+            token = self.register_and_login("judgepass")
+            response = self.client.post(
+                "/api/access/unlock",
+                headers={**self.auth(token), "Idempotency-Key": "judge-demo-pass"},
+                json={"mode": "single_use", "accessMethod": "demo"},
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            payload = response.json()
+            self.assertTrue(payload["accessPassActive"])
+            self.assertTrue(payload["hasAiAccess"])
+            self.assertTrue(payload["hasAnalyticsAccess"])
+            self.assertFalse(payload["hasFinanceAccess"])
+            self.assertEqual(payload["chargedAmountUsdc"], 0)
+        finally:
+            settings.x402_allow_simulated_purchases = False
+
+    def test_expired_demo_can_be_activated_again(self):
+        settings.x402_allow_simulated_purchases = True
+        try:
+            token = self.register_and_login("renewjudge")
+            first = self.client.post(
+                "/api/access/unlock",
+                headers={**self.auth(token), "Idempotency-Key": "judge-demo-first"},
+                json={"mode": "membership", "accessMethod": "demo"},
+            )
+            self.assertEqual(first.status_code, 200, first.text)
+
+            connection = db.get_db_connection()
+            try:
+                connection.execute(
+                    "UPDATE users SET membership_expires_at = ? WHERE username = ?",
+                    ("2020-01-01T00:00:00+00:00", "renewjudge"),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            expired = self.client.get("/api/access/status", headers=self.auth(token)).json()
+            self.assertFalse(expired["membershipActive"])
+            self.assertFalse(expired["hasAiAccess"])
+
+            renewed = self.client.post(
+                "/api/access/unlock",
+                headers={**self.auth(token), "Idempotency-Key": "judge-demo-renewed"},
+                json={"mode": "membership", "accessMethod": "demo"},
+            )
+            self.assertEqual(renewed.status_code, 200, renewed.text)
+            self.assertTrue(renewed.json()["membershipActive"])
+            self.assertNotEqual(first.json()["receipt"], renewed.json()["receipt"])
+        finally:
+            settings.x402_allow_simulated_purchases = False
 
     def test_access_unlock_has_a_replay_safe_x402_ledger_receipt(self):
         token = self.register_and_login("Kaan")
         headers = {**self.auth(token), "Idempotency-Key": "demo-access-retry-regression"}
-        payload = {"mode": "membership", "hasPaidX402": False}
+        payload = {"mode": "membership", "accessMethod": "demo", "hasPaidX402": False}
         first = self.client.post("/api/access/unlock", headers=headers, json=payload)
         self.assertEqual(first.status_code, 200, first.text)
         second = self.client.post("/api/access/unlock", headers=headers, json=payload)
@@ -148,7 +244,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
         response = self.client.post(
             "/api/access/unlock",
             headers=self.auth(token),
-            json={"mode": "membership", "hasPaidX402": True},
+            json={"mode": "membership", "accessMethod": "x402", "hasPaidX402": True},
         )
         self.assertEqual(response.status_code, 402, response.text)
         encoded = response.headers.get("PAYMENT-REQUIRED")
@@ -183,7 +279,7 @@ class AutoGafferRegressionTests(unittest.TestCase):
                     "Idempotency-Key": "verified-payer-membership",
                     "PAYMENT-SIGNATURE": "test-signed-payment",
                 },
-                json={"mode": "membership", "hasPaidX402": True, "walletAddress": wallet},
+                json={"mode": "membership", "accessMethod": "x402", "hasPaidX402": True, "walletAddress": wallet},
             )
 
         self.assertEqual(response.status_code, 200, response.text)

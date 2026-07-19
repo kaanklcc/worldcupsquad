@@ -110,6 +110,8 @@ export interface AgentResponse {
 export interface AccessStatus {
   username: string;
   isDemoAccount: boolean;
+  demoAccessAvailable: boolean;
+  demoDurationMinutes: number;
   membershipTier: 'free' | 'pro' | 'demo_pro';
   membershipStatus: 'active' | 'inactive';
   membershipActive: boolean;
@@ -138,6 +140,15 @@ export interface AccessUnlockResponse extends AccessStatus {
   message: string;
   receipt: string;
   simulated: boolean;
+  chargedAmountUsdc?: number;
+  demoExpiresAt?: string;
+  demoReceipt?: {
+    label: string;
+    settlement: 'simulated';
+    chargedAmountUsdc: number;
+    network: string;
+    expiresAt: string;
+  };
   operation?: OperationReceipt;
 }
 

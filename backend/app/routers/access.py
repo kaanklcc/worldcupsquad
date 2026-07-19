@@ -14,7 +14,7 @@ from ..access import (
     MEMBERSHIP_PRICE_USDC,
     SINGLE_ACCESS_PRICE_USDC,
     get_access_status,
-    grant_demo_membership,
+    grant_demo_access,
     grant_paid_access,
     save_wallet,
     validate_wallet,
@@ -30,6 +30,7 @@ router = APIRouter(prefix="/api/access", tags=["access"])
 
 class AccessUnlockRequest(BaseModel):
     mode: Literal["membership", "single_use"] = "membership"
+    accessMethod: Literal["auto", "demo", "x402"] = "auto"
     hasPaidX402: bool = False
     walletAddress: Optional[str] = None
 
@@ -105,15 +106,26 @@ async def unlock_access(
 ):
     current = get_access_status(user_id)
     action_type = "unlock_membership" if body.mode == "membership" else "unlock_match_pass"
+    demo_available = bool(
+        settings.x402_demo_mode
+        and (settings.x402_allow_simulated_purchases or current["isDemoAccount"])
+    )
+    use_demo = body.accessMethod == "demo" or (
+        body.accessMethod == "auto" and demo_available
+    )
 
-    def begin_unlock_operation():
+    def begin_unlock_operation(provider: str):
         operation, replay = begin_operation(
             user_id=user_id,
             action_type=action_type,
-            provider="x402",
+            provider=provider,
             network=settings.x402_network,
             idempotency_key=idempotency_key,
-            payload={"mode": body.mode, "walletAddress": body.walletAddress or ""},
+            payload={
+                "mode": body.mode,
+                "accessMethod": "demo" if use_demo else "x402",
+                "walletAddress": body.walletAddress or "",
+            },
         )
         if replay:
             if operation["status"] == "confirmed" and operation["receipt"]:
@@ -121,17 +133,30 @@ async def unlock_access(
             raise HTTPException(status_code=409, detail=f"Access operation is {operation['status']}; create a new intent to retry")
         return operation, None
 
-    # The named judge/demo account is always explicit, free, and labelled as
-    # simulated.  It never enters a payment or wallet-signing flow.
-    if current["isDemoAccount"]:
-        operation, replay_receipt = begin_unlock_operation()
+    # Judge checkout is explicit, renewable and visibly simulated. It never
+    # enters a wallet-signing or on-chain settlement flow.
+    if use_demo:
+        if not demo_available:
+            raise HTTPException(status_code=403, detail="Hackathon Demo checkout is not enabled")
+        operation, replay_receipt = begin_unlock_operation("hackathon_demo")
         if replay_receipt:
             return {**replay_receipt, "operation": operation}
         try:
-            result = grant_demo_membership(user_id)
+            result = grant_demo_access(user_id, body.mode)
+            plan_label = "Demo Pro" if body.mode == "membership" else "Demo Match Pass"
             payload = {
                 "success": True,
-                "message": "Kaan demo membership activated. No payment was charged.",
+                "message": (
+                    f"{plan_label} activated for {result['demoDurationMinutes']} minutes. "
+                    "Hackathon simulation: no wallet signature, settlement, or funds were charged."
+                ),
+                "demoReceipt": {
+                    "label": "Hackathon Demo checkout",
+                    "settlement": "simulated",
+                    "chargedAmountUsdc": 0.0,
+                    "network": settings.x402_network,
+                    "expiresAt": result["demoExpiresAt"],
+                },
                 **result,
             }
             confirmed = confirm_operation(
@@ -146,7 +171,7 @@ async def unlock_access(
             raise
         except Exception as error:
             fail_operation(operation["operationId"], str(error))
-            raise HTTPException(status_code=500, detail=f"Demo membership activation failed: {error}")
+            raise HTTPException(status_code=500, detail=f"Hackathon Demo activation failed: {error}")
 
     signature = payment_signature or legacy_payment
     receipt = legacy_receipt
@@ -154,7 +179,7 @@ async def unlock_access(
     if not signature and not receipt:
         _raise_payment_required(body.mode)
 
-    operation, replay_receipt = begin_unlock_operation()
+    operation, replay_receipt = begin_unlock_operation("x402")
     if replay_receipt:
         return {**replay_receipt, "operation": operation}
     try:

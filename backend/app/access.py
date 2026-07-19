@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import re
 from typing import Any, Dict, Optional
+from uuid import uuid4
 
 from fastapi import HTTPException, status
 
@@ -21,6 +22,7 @@ MEMBERSHIP_PRICE_USDC = 4.99
 SINGLE_ACCESS_PRICE_USDC = 0.05
 MEMBERSHIP_DAYS = 30
 SINGLE_ACCESS_MINUTES = 15
+DEMO_SOURCES = {"kaan_demo", "hackathon_demo_pro", "hackathon_demo_match_pass"}
 
 LOCKED_CAPABILITIES_MESSAGE = """🔒 **WCAI access is locked**
 
@@ -39,7 +41,7 @@ WCAI chat and Deep Tactical Analytics require an active membership or a time-lim
 • Pro Membership: AI, Analytics and finance tools for 30 days — **4.99 USDC**
 • x402 Match Pass: 15 minutes of AI and Analytics — **0.05 USDC**
 
-Open **Unlock Deep Tactical Analytics** or the membership status in the header. The Kaan demo account activates the demo membership without charging real funds."""
+Open **Unlock Deep Tactical Analytics** or the membership status in the header. Hackathon Demo checkout, when enabled, grants a visibly simulated 30-minute pass without charging funds."""
 
 
 def _utc_now() -> datetime:
@@ -88,12 +90,15 @@ def get_access_status(user_id: int) -> Dict[str, Any]:
     membership_expires_at = _parse_iso(row["membership_expires_at"])
     pass_expires_at = _parse_iso(row["access_pass_expires_at"])
 
-    membership_active = row["membership_status"] == "active" and (
+    # Legacy demo grants without an expiry are treated as expired so every
+    # judge explicitly activates the same renewable, time-boxed experience.
+    membership_has_valid_expiry = membership_expires_at is not None or row["membership_source"] not in DEMO_SOURCES
+    membership_active = row["membership_status"] == "active" and membership_has_valid_expiry and (
         membership_expires_at is None or membership_expires_at > now
     )
     access_pass_active = pass_expires_at is not None and pass_expires_at > now
     source = row["membership_source"] if membership_active else (
-        "x402_access_pass" if access_pass_active else None
+        (row["membership_source"] or "x402_access_pass") if access_pass_active else None
     )
     zero_address = "0x0000000000000000000000000000000000000000"
     pay_to = settings.x402_pay_to.strip()
@@ -106,9 +111,17 @@ def get_access_status(user_id: int) -> Dict[str, Any]:
         and asset.lower() != zero_address
     )
 
+    demo_duration = max(5, min(int(settings.hackathon_demo_minutes), 120))
+    demo_available = bool(
+        settings.x402_demo_mode
+        and (settings.x402_allow_simulated_purchases or row["username"].strip().lower() == DEMO_USERNAME)
+    )
+
     return {
         "username": row["username"],
         "isDemoAccount": row["username"].strip().lower() == DEMO_USERNAME,
+        "demoAccessAvailable": demo_available,
+        "demoDurationMinutes": demo_duration,
         "membershipTier": row["membership_tier"] if membership_active else "free",
         "membershipStatus": "active" if membership_active else "inactive",
         "membershipActive": membership_active,
@@ -153,31 +166,54 @@ def _record_transaction(
     )
 
 
-def grant_demo_membership(user_id: int) -> Dict[str, Any]:
-    """Activate the no-charge judge/demo membership for Kaan only."""
-    row = _load_user(user_id)
-    if row["username"].strip().lower() != DEMO_USERNAME:
-        raise HTTPException(status_code=403, detail="Free demo membership is limited to the Kaan demo account")
+def grant_demo_access(user_id: int, mode: str) -> Dict[str, Any]:
+    """Activate an explicit, short-lived and auditable hackathon demo pass."""
+    if mode not in {"membership", "single_use"}:
+        raise HTTPException(status_code=400, detail="Unsupported access mode")
 
+    row = _load_user(user_id)
+    is_legacy_judge = row["username"].strip().lower() == DEMO_USERNAME
+    demo_available = settings.x402_demo_mode and (
+        settings.x402_allow_simulated_purchases or is_legacy_judge
+    )
+    if not demo_available:
+        raise HTTPException(status_code=403, detail="Hackathon Demo checkout is not enabled")
+
+    duration_minutes = max(5, min(int(settings.hackathon_demo_minutes), 120))
+    now = _utc_now()
+    expires_at = _to_iso(now + timedelta(minutes=duration_minutes))
+    source = "hackathon_demo_pro" if mode == "membership" else "hackathon_demo_match_pass"
     conn = get_db_connection()
     cursor = conn.cursor()
-    receipt = f"demo_membership_{user_id}_{int(_utc_now().timestamp())}"
+    receipt = f"demo_{mode}_{user_id}_{uuid4().hex}"
     try:
-        cursor.execute(
-            """
-            UPDATE users
-            SET membership_tier = 'demo_pro', membership_status = 'active',
-                membership_source = 'kaan_demo', membership_expires_at = NULL
-            WHERE id = ?
-            """,
-            (user_id,),
-        )
+        if mode == "membership":
+            cursor.execute(
+                """
+                UPDATE users
+                SET membership_tier = 'demo_pro', membership_status = 'active',
+                    membership_source = ?, membership_expires_at = ?
+                WHERE id = ?
+                """,
+                (source, expires_at, user_id),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE users
+                SET membership_source = ?, access_pass_expires_at = ?
+                WHERE id = ?
+                """,
+                (source, expires_at, user_id),
+            )
+        if cursor.rowcount != 1:
+            raise HTTPException(status_code=404, detail="User not found")
         _record_transaction(
             cursor,
             user_id=user_id,
-            mode="membership",
+            mode=mode,
             amount=0.0,
-            source="kaan_demo",
+            source=source,
             receipt=receipt,
             simulated=True,
         )
@@ -187,7 +223,13 @@ def grant_demo_membership(user_id: int) -> Dict[str, Any]:
         raise
     finally:
         conn.close()
-    return {**get_access_status(user_id), "receipt": receipt, "simulated": True}
+    return {
+        **get_access_status(user_id),
+        "receipt": receipt,
+        "simulated": True,
+        "chargedAmountUsdc": 0.0,
+        "demoExpiresAt": expires_at,
+    }
 
 
 def grant_paid_access(
@@ -225,10 +267,11 @@ def grant_paid_access(
             cursor.execute(
                 """
                 UPDATE users
-                SET access_pass_expires_at = ?, wallet_address = COALESCE(?, wallet_address)
+                SET membership_source = ?, access_pass_expires_at = ?,
+                    wallet_address = COALESCE(?, wallet_address)
                 WHERE id = ?
                 """,
-                (expires_at, normalized_wallet, user_id),
+                (source, expires_at, normalized_wallet, user_id),
             )
             amount = SINGLE_ACCESS_PRICE_USDC
 
