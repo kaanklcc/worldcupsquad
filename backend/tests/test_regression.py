@@ -160,6 +160,52 @@ class AutoGafferRegressionTests(unittest.TestCase):
             self.client.get("/api/access/status", headers=self.auth(token)).json()["hasAiAccess"]
         )
 
+    def test_verified_x402_membership_unlocks_a_new_manager_and_premium_tools(self):
+        """A non-demo user only gains Pro access after facilitator settlement."""
+        token = self.register_and_login("verifiedpayer")
+        wallet = "0x1111111111111111111111111111111111111111"
+
+        with patch("app.routers.access.get_x402_verifier") as get_verifier:
+            verifier = get_verifier.return_value
+            verifier.verify_and_settle = AsyncMock(return_value={
+                "verified": True,
+                "settled": True,
+                "amount": 4.99,
+                "currency": "USDC",
+                "payer": wallet,
+                "receipt": "0xverified_x402_test_receipt",
+                "paymentResponse": "test-payment-response",
+            })
+            response = self.client.post(
+                "/api/access/unlock",
+                headers={
+                    **self.auth(token),
+                    "Idempotency-Key": "verified-payer-membership",
+                    "PAYMENT-SIGNATURE": "test-signed-payment",
+                },
+                json={"mode": "membership", "hasPaidX402": True, "walletAddress": wallet},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(response.json()["simulated"])
+        self.assertTrue(response.json()["membershipActive"])
+        self.assertEqual(response.json()["walletAddress"], wallet)
+
+        access = self.client.get("/api/access/status", headers=self.auth(token)).json()
+        self.assertTrue(access["membershipActive"])
+        self.assertTrue(access["hasAiAccess"])
+        self.assertTrue(access["hasAnalyticsAccess"])
+        self.assertTrue(access["hasFinanceAccess"])
+        self.assertEqual(access["accessSource"], "x402_verified")
+
+        lab = self.client.post(
+            "/api/tactical-lab/compare",
+            headers=self.auth(token),
+            json={"formation": "3-5-2", "strategy": "attacking"},
+        )
+        self.assertEqual(lab.status_code, 200, lab.text)
+        self.assertEqual(lab.json()["accessSource"], "x402_verified")
+
     def test_cctp_requires_saved_matching_wallet_and_is_one_time(self):
         token = self.register_and_login("Kaan")
         self.unlock_demo(token)
