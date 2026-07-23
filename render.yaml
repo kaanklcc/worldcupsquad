@@ -1,16 +1,56 @@
 services:
   - type: web
-    name: wcai-api
+    name: wcai-api-kaanklcc
     runtime: python
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: APP_ENV
+        value: production
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: AUTH_COOKIE_SAMESITE
+        value: lax
+      - key: DOCS_ENABLED
+        value: "false"
+      - key: CORS_ORIGINS
+        value: https://wcai-web-kaanklcc.onrender.com
+      - key: ALLOWED_HOSTS
+        value: wcai-api-kaanklcc.onrender.com,wcai-web-kaanklcc.onrender.com
+      - key: X402_DEMO_MODE
+        value: "true"
+      - key: X402_ALLOW_SIMULATED_PURCHASES
+        value: "true"
+      - key: HACKATHON_DEMO_MINUTES
+        value: "30"
+      - key: X402_NETWORK
+        value: eip155:1439
+      - key: X402_PAY_TO
+        value: 0xF64aF685CA17369bBC9A41e4E172EfD37A678EC9
+      - key: X402_ASSET
+        value: 0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d
+      - key: X402_RESOURCE_BASE_URL
+        value: https://wcai-api-kaanklcc.onrender.com
+      - key: INJECTIVE_TESTNET
+        value: "true"
+      - key: MCP_SIMULATION
+        value: "false"
 
   - type: web
-    name: wcai-web
+    name: wcai-web-kaanklcc
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: /backend-api
+      - key: BACKEND_API_ORIGIN
+        value: https://wcai-api-kaanklcc.onrender.com
