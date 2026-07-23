@@ -302,6 +302,33 @@ npm run dev
 
 Open [`http://localhost:3000`](http://localhost:3000).
 
+### Public MVP deployment on Render
+
+The repository includes [`render.yaml`](render.yaml) for two free Render Web Services: the FastAPI API and the Next.js frontend. Import the Blueprint in Render, choose the **Free** instance type for both services, then set these values in the Render dashboard (never commit them):
+
+```env
+# API service
+GEMINI_API_KEY=
+JWT_SECRET_KEY=
+APP_ENV=production
+AUTH_COOKIE_SECURE=true
+AUTH_COOKIE_SAMESITE=lax
+DOCS_ENABLED=false
+X402_DEMO_MODE=true
+X402_ALLOW_SIMULATED_PURCHASES=true
+HACKATHON_DEMO_MINUTES=30
+X402_NETWORK=eip155:1439
+X402_PAY_TO=0xF64aF685CA17369bBC9A41e4E172EfD37A678EC9
+X402_RESOURCE_BASE_URL=https://YOUR_API.onrender.com
+CORS_ORIGINS=https://YOUR_FRONTEND.onrender.com
+ALLOWED_HOSTS=YOUR_API.onrender.com
+
+# Frontend service
+NEXT_PUBLIC_API_URL=https://YOUR_API.onrender.com
+```
+
+After both services deploy, update the API service's `CORS_ORIGINS` with the exact frontend URL and redeploy it. Use the frontend `https://...onrender.com` URL as the HackQuest MVP link. Free Render web services sleep after 15 minutes without traffic and use ephemeral local storage, so reviewers should create a new account and may need to wait briefly for the first request after idle time.
+
 ### 4. Access checkout: judge demo and optional real x402
 
 For submission review, keep `X402_ALLOW_SIMULATED_PURCHASES=true` and `HACKATHON_DEMO_MINUTES=30`. A new account remains locked until the judge opens the access console and activates Demo Pro or Match Pass. The resulting receipt says `simulated: true`, charges `0 USDC`, expires automatically and can be activated again after expiry.
