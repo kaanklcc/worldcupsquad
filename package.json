@@ -2,6 +2,11 @@
   "name": "wcai",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=22.20.0 <23",
+    "npm": ">=10.9.0 <11"
+  },
   "scripts": {
     "dev": "next dev",
     "facilitator": "node x402-facilitator/server.mjs",
